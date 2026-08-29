@@ -1,0 +1,60 @@
+# ===== 依赖与构建产物 =====
+node_modules/
+dist/
+.npm-cache/
+
+# ===== 环境变量（含密钥，禁止提交；模板保留） =====
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ===== 本地数据库文件（SQLite 等，非源码） =====
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ===== 运行期上传文件：仅保留目录结构，忽略内容（目录用 .gitkeep 占位） =====
+# 说明：图片按类型分目录存储（avatars/images/patterns/videos），见 pindou-server/utils/upload.js
+pindou-project/pindou-server/public/uploads/**
+!pindou-project/pindou-server/public/uploads/avatars/
+!pindou-project/pindou-server/public/uploads/images/
+!pindou-project/pindou-server/public/uploads/patterns/
+!pindou-project/pindou-server/public/uploads/videos/
+!pindou-project/pindou-server/public/uploads/avatars/.gitkeep
+!pindou-project/pindou-server/public/uploads/images/.gitkeep
+!pindou-project/pindou-server/public/uploads/patterns/.gitkeep
+!pindou-project/pindou-server/public/uploads/videos/.gitkeep
+
+# ===== 根目录示例图片（开发素材，非运行必需；测试夹具已迁移至 tests/fixtures） =====
+/dwrg.jpg
+/no.jpg
+/cat拼豆图纸.jpg
+/两个女生.png
+/头像2.jpg
+/恶魔少女.jpg
+/懒羊羊.jpg
+/我的世界.jpg
+/摆手小猫.jpg
+/男生.jpg
+/皮卡丘.jpeg
+/米菲.jpg
+/邮票.jpeg
+/邮票.png
+
+# ===== 日志与临时文件 =====
+logs/
+*.log
+*.tmp
+*.timestamp-*-*.mjs
+
+# ===== 编辑器 =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# ===== 测试产物 / 系统文件 =====
+coverage/
+.DS_Store
+Thumbs.db

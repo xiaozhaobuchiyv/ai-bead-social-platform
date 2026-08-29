@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend lint & test
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: 123456
+          MYSQL_DATABASE: pindou
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pindou-project/pindou-server/package-lock.json
+      - name: Install deps
+        working-directory: pindou-project/pindou-server
+        run: npm ci
+      - name: Init database
+        working-directory: pindou-project/pindou-server
+        run: node scripts/initDb.js
+        env:
+          DB_HOST: 127.0.0.1
+          DB_USER: root
+          DB_PASSWORD: 123456
+          DB_NAME: pindou
+          JWT_SECRET: ci-secret
+      - name: Run tests
+        working-directory: pindou-project/pindou-server
+        run: npm test
+        env:
+          DB_HOST: 127.0.0.1
+          DB_USER: root
+          DB_PASSWORD: 123456
+          DB_NAME: pindou
+          JWT_SECRET: ci-secret
+          NODE_ENV: test
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pindou-front/package-lock.json
+      - name: Install deps
+        working-directory: pindou-front
+        run: npm ci
+      - name: Lint
+        working-directory: pindou-front
+        run: npm run lint || true
+      - name: Build
+        working-directory: pindou-front
+        run: npm run build

@@ -1,0 +1,88 @@
+# =====================================================================
+# 拼豆分享平台 一键编排：MySQL + 后端 + 前端(Nginx)
+# 用法：docker compose up -d --build
+# 访问：http://localhost:8080 （前端），http://localhost:3000/api/docs （后端文档）
+# =====================================================================
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: pindou-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
+      MYSQL_DATABASE: pindou
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./pindou-server/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "3306:3306"
+
+  redis:
+    image: redis:7-alpine
+    container_name: pindou-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+
+  pindou-server:
+    build: ./pindou-server
+    container_name: pindou-server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DB_NAME: pindou
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      CACHE_DRIVER: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 1
+      VOLCANO_ARC_API_KEY: ${VOLCANO_ARC_API_KEY:-}
+      VOLCANO_ARC_BASE_URL: ${VOLCANO_ARC_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      VOLCANO_CHAT_MODEL: ${VOLCANO_CHAT_MODEL:-}
+      VOLCANO_IMAGE_MODEL: ${VOLCANO_IMAGE_MODEL:-}
+      VOLCANO_VISION_MODEL: ${VOLCANO_VISION_MODEL:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+    volumes:
+      - server-uploads:/app/public/uploads
+    ports:
+      - "3000:3000"
+
+  pindou-front:
+    build:
+      context: ./pindou-front
+      args:
+        VITE_API_BASE: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    container_name: pindou-front
+    restart: unless-stopped
+    depends_on:
+      - pindou-server
+    ports:
+      - "8080:80"
+
+volumes:
+  mysql-data:
+  server-uploads:
+  redis-data:
