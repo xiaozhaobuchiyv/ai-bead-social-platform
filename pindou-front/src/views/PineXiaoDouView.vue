@@ -145,7 +145,8 @@ const scrollToBottom = (smooth = true) => {
 }
 
 // ==================== 打字机效果 ====================
-const charDelay = 24
+// 打字机：基础逐字延迟。SSE 内容已流式到达，为了不「滞后」，落后较多时一次补多字（追赶）。
+const charDelay = 12
 let typeTimer = null
 
 const stopTypeTimer = () => {
@@ -173,8 +174,11 @@ const ensureTyping = (msg) => {
   const tick = () => {
     const full = msg.content || ''
     const cur = msg.displayContent || ''
-    if (cur.length < full.length) {
-      msg.displayContent = full.slice(0, cur.length + 1)
+    const backlog = full.length - cur.length
+    if (backlog > 0) {
+      // 落后越多一次补越多字，让展示速度跟上流式内容，避免「越等越久」
+      const step = backlog > 80 ? 4 : backlog > 30 ? 2 : 1
+      msg.displayContent = full.slice(0, cur.length + step)
       scrollToBottom()
       typeTimer = setTimeout(tick, charDelay)
     } else {
@@ -559,84 +563,15 @@ const downloadImage = async (imageUrl, filename = 'ai-image') => {
       : imageUrl
     const response = await fetch(target)
     const blob = await response.blob()
-    const sourceUrl = URL.createObjectURL(blob)
 
-    const image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.src = sourceUrl
-
-    await new Promise((resolve, reject) => {
-      image.onload = resolve
-      image.onerror = reject
-    })
-
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('Canvas 初始化失败')
-
-    const gridSize = 48
-    const labelSize = 14
-    const cols = Math.ceil(image.width / gridSize)
-    const rows = Math.ceil(image.height / gridSize)
-    const footerHeight = 0
-
-    canvas.width = image.width
-    canvas.height = image.height + footerHeight
-
-    ctx.drawImage(image, 0, 0, image.width, image.height)
-
-    ctx.save()
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)'
-    ctx.lineWidth = 1
-
-    for (let x = 0; x <= cols; x++) {
-      const px = Math.min(x * gridSize, image.width)
-      ctx.beginPath()
-      ctx.moveTo(px + 0.5, 0)
-      ctx.lineTo(px + 0.5, image.height)
-      ctx.stroke()
-    }
-
-    for (let y = 0; y <= rows; y++) {
-      const py = Math.min(y * gridSize, image.height)
-      ctx.beginPath()
-      ctx.moveTo(0, py + 0.5)
-      ctx.lineTo(image.width, py + 0.5)
-      ctx.stroke()
-    }
-
-    ctx.font = `bold ${labelSize}px Arial, sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.lineWidth = 4
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)'
-    ctx.fillStyle = '#000'
-
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const cellX = col * gridSize + gridSize / 2
-        const cellY = row * gridSize + gridSize / 2
-        const colorNo = row * cols + col + 1
-        const text = String(colorNo)
-        ctx.strokeText(text, cellX, cellY)
-        ctx.fillText(text, cellX, cellY)
-      }
-    }
-
-    ctx.restore()
-
-    const outBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (!outBlob) throw new Error('图片导出失败')
-
-    const outUrl = URL.createObjectURL(outBlob)
+    // 直接下载原图（不叠加网格/色号）
+    const outUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = outUrl
     link.download = `${filename}-${Date.now()}.png`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-
-    URL.revokeObjectURL(sourceUrl)
     URL.revokeObjectURL(outUrl)
   } catch (error) {
     console.error('下载图片失败，直接下载原图:', error)
@@ -960,7 +895,8 @@ const publishPatternDesign = (result) => {
 
 <style scoped>
 .pine-xiaodou-page {
-  height: 100%;
+  /* 钉在视口高度：消息区内部滚动，输入栏固定底部，不随消息增长把整页顶下去 */
+  height: 100vh;
   min-height: 0;
   padding: 18px;
   box-sizing: border-box;
@@ -1177,12 +1113,21 @@ h1 {
   min-height: 24px;
 }
 
+/* 三点指示：flex 让点的 transform(跳跃) 生效（行内元素不响应 transform） */
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+
 .dots span {
+  display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: #2ec4b5;
-  animation: blink 1.2s infinite ease-in-out;
+  animation: dot-jump 1s infinite ease-in-out;
 }
 
 .dots span:nth-child(2) {
@@ -1442,18 +1387,14 @@ button:disabled {
   background: rgba(0, 0, 0, 0.8);
 }
 
-@keyframes blink {
-
+@keyframes dot-jump {
   0%,
-  80%,
+  70%,
   100% {
-    opacity: 0.25;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
-
-  40% {
-    opacity: 1;
-    transform: translateY(-3px);
+  35% {
+    transform: translateY(-6px) scale(1.1);
   }
 }
 
