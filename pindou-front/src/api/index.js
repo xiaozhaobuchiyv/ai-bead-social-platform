@@ -47,6 +47,11 @@ export const noteApi = {
     return request.get('/notes/list', { params })
   },
 
+  // 关键词搜索（标题/内容/分类 模糊匹配，游标分页：?q=&pageSize=&cursor=）
+  searchNotes: (params = {}) => {
+    return request.get('/notes/search', { params })
+  },
+
   // 获取笔记详情
   getNotesDetail: (id) => {
     return request.get(`/notes/detail/${id}`)
@@ -204,6 +209,10 @@ export const messageApi = {
   // 发送消息
   sendMessage: (data) => {
     return request.post('/messages/send', data)
+  },
+  // 上传私信图片
+  uploadImage: (formData) => {
+    return request.post('/messages/upload-image', formData)
   },
   // 获取未读消息数
   getUnreadCount: (config = {}) => {

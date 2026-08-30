@@ -55,7 +55,7 @@
                 </button>
               </div>
               <div class="video-preview-body">
-                <video :src="previewVideoUrl" controls preload="metadata" class="preview-video"></video>
+                <video :src="previewVideoUrl" controls preload="metadata" v-video-volume class="preview-video"></video>
               </div>
               <div class="video-uploading" v-if="videoUploading">
                 <span class="spinner"></span> 视频上传中...
@@ -108,6 +108,8 @@ import imageCompression from 'browser-image-compression'
 
 const saving = ref(false)
 const publishing = ref(false)
+// 正在编辑的草稿 id（编辑草稿进入发布页后记住，发布/再存草稿时用到）
+const editingDraftId = ref(null)
 const compressing = ref(false)
 const form = ref({ title: '', content: '', category: '' })
 const images = ref([])
@@ -328,14 +330,21 @@ const saveDraft = async () => {
       formData.append('images', imagePath)
     })
 
-    const res = await draftApi.saveDraft(formData)
+    let res
+    if (editingDraftId.value) {
+      // 编辑已有草稿：更新原草稿，而不是新建重复条目
+      res = await draftApi.editDraft(editingDraftId.value, formData)
+    } else {
+      // 新建草稿：保存后记住新草稿 id，后续再点「存为草稿」就更新这条
+      res = await draftApi.saveDraft(formData)
+      if (res.code === 200 && res.id) {
+        editingDraftId.value = res.id
+      }
+    }
     if (res.code === 200) {
-      form.value = { title: '', content: '', category: '' }
-      images.value = []
-      fileList.value = []
-      existingImagePaths.value = []
-      topics.value = []
-      videoUrl.value = ''
+      ElMessage.success('已存为草稿')
+      // 保留表单内容，方便继续编辑；不重置 editingDraftId，
+      // 这样再次「存为草稿」会更新同一条草稿，内容不会丢
     } else {
       console.error(res.msg || '保存失败')
     }
@@ -386,9 +395,16 @@ const publishNote = async () => {
     } else {
       const res = await noteApi.publishNote(formData)
       if (res.code === 200) {
-        const draftId = localStorage.getItem('publishingDraftId')
-        if (draftId) {
-          await draftApi.deleteDraft(draftId)
+        ElMessage.success('发布成功')
+        // 编辑草稿后发布：删除被编辑的草稿，避免草稿残留
+        if (editingDraftId.value) {
+          await draftApi.deleteDraft(editingDraftId.value)
+          editingDraftId.value = null
+        }
+        // 兼容旧逻辑（publishingDraftId 目前无人写入，保留以防未来扩展）
+        const legacyDraftId = localStorage.getItem('publishingDraftId')
+        if (legacyDraftId) {
+          await draftApi.deleteDraft(legacyDraftId)
           localStorage.removeItem('publishingDraftId')
         }
       } else {
@@ -422,6 +438,9 @@ onMounted(() => {
     try {
       const draft = JSON.parse(draftText)
       fillDraftForm(draft)
+      if (source.key === 'editingDraft' && draft.id) {
+        editingDraftId.value = draft.id
+      }
       source.storage.removeItem(source.key)
       break
     } catch (e) {

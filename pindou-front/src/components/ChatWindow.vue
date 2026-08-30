@@ -2,7 +2,7 @@
   <div class="chat-window">
     <!-- 聊天头部 -->
     <div class="chat-header" v-if="targetUser">
-      <img :src="formatAvatar(targetUser.avatar)" class="target-avatar" />
+      <SkeletonAvatar :src="targetUser.avatar ? formatAvatar(targetUser.avatar) : ''" :name="targetUser.nickname || '用户'" :size="44" />
       <span class="target-name">{{ targetUser.nickname }}</span>
       <span class="online-dot" title="在线"></span>
     </div>
@@ -19,9 +19,17 @@
           class="message-item"
           :class="{ mine: msg.from_user_id === currentUserId, sending: msg.sending }"
         >
-          <img :src="formatAvatar(msg.from_user_id === currentUserId ? myAvatar : msg.from_avatar)" class="msg-avatar" @click="openProfile(msg)" />
+          <SkeletonAvatar :src="formatAvatar(msg.from_user_id === currentUserId ? myAvatar : msg.from_avatar)" :name="msg.from_nickname || '我'" :size="40" @click="openProfile(msg)" />
           <div class="msg-content">
-            <div class="msg-text">{{ msg.content }}</div>
+            <img
+              v-if="msg.image"
+              :src="resolveMediaUrl(msg.image)"
+              alt="图片消息"
+              class="msg-image"
+              loading="lazy"
+              draggable="false"
+            />
+            <div v-if="msg.content" class="msg-text">{{ msg.content }}</div>
             <div class="msg-time">
               <span v-if="msg.sending" class="sending-tag">发送中...</span>
               <template v-else>{{ formatTime(msg.create_time) }}</template>
@@ -40,6 +48,9 @@
 
     <!-- 输入框 -->
     <div class="input-area">
+      <button class="img-btn" title="发送图片" :disabled="sending" @click="imageInput?.click()">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      </button>
       <input
         v-model="inputMessage"
         type="text"
@@ -52,6 +63,13 @@
         {{ sending ? '发送中...' : '发送' }}
       </button>
     </div>
+    <input
+      type="file"
+      ref="imageInput"
+      class="hidden-file"
+      accept="image/jpeg,image/png,image/gif,image/webp"
+      @change="handleImageUpload"
+    />
   </div>
 </template>
 
@@ -59,8 +77,9 @@
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { messageApi } from '@/api'
-import { formatAvatar, DEFAULT_AVATAR } from '@/utils/media'
+import { messageApi, userApi } from '@/api'
+import { formatAvatar, resolveMediaUrl, DEFAULT_AVATAR } from '@/utils/media'
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue'
 
 const router = useRouter()
 
@@ -75,6 +94,7 @@ const emit = defineEmits(['read', 'conversation-read'])
 
 const messages = ref([])
 const inputMessage = ref('')
+const imageInput = ref(null)
 const messagesContainer = ref(null)
 const targetUser = ref(null)
 const currentUserId = ref(null)
@@ -190,6 +210,21 @@ const fetchMessages = async ({ silent = false } = {}) => {
           ? { nickname: firstMsg.from_nickname, avatar: firstMsg.from_avatar }
           : { nickname: firstMsg.to_nickname, avatar: firstMsg.to_avatar }
       }
+
+      // 全新会话（无历史消息）也拉一次对方资料，避免头部空白
+      if (!targetUser.value && props.targetId) {
+        try {
+          const info = await userApi.getOtherUserInfo(props.targetId)
+          if (info.code === 200 && info.user) {
+            targetUser.value = {
+              nickname: info.user.nickname || info.user.username || '用户',
+              avatar: info.user.avatar,
+            }
+          }
+        } catch (e) {
+          // 忽略：拉不到资料时头部为空但不影响发消息
+        }
+      }
       emit('read')
       emit('conversation-read')
       syncUnreadState()
@@ -205,28 +240,26 @@ const fetchMessages = async ({ silent = false } = {}) => {
   }
 }
 
-const sendMessage = async () => {
-  if (!inputMessage.value.trim() || !props.targetId || sending.value) return
+/** 统一的发送逻辑（文本 / 图片） */
+const postMessage = async ({ content = '', image = '' } = {}) => {
+  if (!props.targetId || sending.value) return
 
-  const content = inputMessage.value.trim()
   sending.value = true
-
-  // 乐观追加发送中消息
   const tempId = `temp-${Date.now()}`
   messages.value.push({
     id: tempId,
     from_user_id: currentUserId.value,
     to_user_id: props.targetId,
     content,
+    image,
     create_time: new Date().toISOString(),
     from_avatar: myAvatar.value,
     sending: true,
   })
-  inputMessage.value = ''
   scrollToBottom(true)
 
   try {
-    const res = await messageApi.sendMessage({ targetId: props.targetId, content })
+    const res = await messageApi.sendMessage({ targetId: props.targetId, content, image })
     if (res.code === 200) {
       const idx = messages.value.findIndex((m) => m.id === tempId)
       if (idx !== -1) {
@@ -235,6 +268,7 @@ const sendMessage = async () => {
           from_user_id: currentUserId.value,
           to_user_id: props.targetId,
           content,
+          image,
           create_time: res.data.create_time || new Date().toISOString(),
           from_avatar: myAvatar.value,
           sending: false,
@@ -253,6 +287,46 @@ const sendMessage = async () => {
   } finally {
     sending.value = false
     scrollToBottom(true)
+  }
+}
+
+const sendMessage = async () => {
+  const content = inputMessage.value.trim()
+  if (!content || !props.targetId || sending.value) return
+  inputMessage.value = ''
+  await postMessage({ content })
+}
+
+const MAX_IMAGE_SIZE_MB = 10
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+const handleImageUpload = async (event) => {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!props.targetId) {
+    ElMessage.warning('请先选择会话')
+    return
+  }
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    ElMessage.warning('只支持 JPG / PNG / GIF / WEBP 图片')
+    return
+  }
+  if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+    ElMessage.warning(`图片不能超过 ${MAX_IMAGE_SIZE_MB}MB`)
+    return
+  }
+  try {
+    const formData = new FormData()
+    formData.append('images', file)
+    const res = await messageApi.uploadImage(formData)
+    if (res.code === 200 && res.data?.images?.length) {
+      await postMessage({ image: res.data.images[0] })
+    } else {
+      ElMessage.error(res.msg || '图片上传失败')
+    }
+  } catch (error) {
+    ElMessage.error(error?.msg || error?.message || '图片上传失败')
   }
 }
 
@@ -428,6 +502,15 @@ onUnmounted(() => {
   max-width: 60%;
 }
 
+.msg-image {
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: 12px;
+  object-fit: cover;
+  cursor: zoom-in;
+  background: #eceff3;
+}
+
 .msg-text {
   background: #fff;
   padding: 12px 16px;
@@ -482,6 +565,36 @@ onUnmounted(() => {
     background: #f5f5f5;
     color: #999;
   }
+}
+
+.img-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e8e8e8;
+  border-radius: 50%;
+  background: #fff;
+  color: #7d8796;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    border-color: #2ec4b5;
+    color: #0f766e;
+    background: #eefbf8;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.hidden-file {
+  display: none;
 }
 
 .send-btn {

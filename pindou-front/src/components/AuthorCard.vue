@@ -1,6 +1,8 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { userApi, noteApi, followApi } from '@/api'
+import SkeletonImage from '@/components/SkeletonImage.vue'
 import { parseImagesJson, resolveMediaUrl, formatAvatar } from '@/utils/media'
 
 const props = defineProps({
@@ -13,6 +15,8 @@ const props = defineProps({
     default: null
   }
 })
+
+const router = useRouter()
 
 const emit = defineEmits(['close', 'openNote', 'follow-change'])
 
@@ -120,7 +124,6 @@ const getAuthorInfo = async () => {
         followers: Number(res.followers || 0),
         following: Number(res.following || 0)
       }
-      console.log('作者卡片统计:', stats.value, '关注状态:', isFollowing.value)
     } else {
       console.error('获取作者信息失败:', res.msg)
     }
@@ -133,14 +136,13 @@ const getAuthorNotes = async () => {
 
   try {
     const res = await noteApi.getAuthorNotes(props.authorId)
-    console.log('作者笔记响应:', res)  // 调试用
 
     if (res.code === 200) {
       authorNotes.value = res.list.map(item => {
         const imagesArray = parseImagesJson(item.images)
         const coverImage = imagesArray.length > 0
           ? resolveMediaUrl(imagesArray[0])
-          : DEFAULT_COVER
+          : ''
 
         return {
           id: item.id,
@@ -149,7 +151,6 @@ const getAuthorNotes = async () => {
           imageCount: imagesArray.length
         }
       })
-      console.log('处理后的作品列表:', authorNotes.value)  // 调试用
     }
   } catch (error) {
     console.error('获取作者作品失败:', error)
@@ -180,6 +181,11 @@ const getCurrentUserId = () => {
   } catch {
     return null
   }
+}
+
+const goMessage = () => {
+  emit('close')
+  router.push(`/message?target=${Number(props.authorId)}`)
 }
 
 const toggleFollow = async () => {
@@ -267,7 +273,7 @@ const close = () => {
             />
             <h2 class="nickname">{{ authorInfo.nickname || authorInfo.username || '用户' }}</h2>
             <p class="pindou-id">品豆号: {{ pindouId }}</p>
-            <p class="bio">{{ authorInfo.signature || '暂无签名' }}</p>
+            <p class="bio">{{ authorInfo.signature || '分享生活点滴，记录美好时光' }}</p>
             
             <div class="stats-row">
               <div class="stat-item">
@@ -288,14 +294,22 @@ const close = () => {
               </div>
             </div>
             
-            <button 
-              class="follow-btn" 
-              :class="{ following: isFollowing, self: authorInfo.id === getCurrentUserId() }"
-              :disabled="followLoading || authorInfo.id === getCurrentUserId()"
-              @click="toggleFollow"
-            >
-              {{ authorInfo.id === getCurrentUserId() ? '不能关注自己' : (followLoading ? '处理中...' : (isFollowing ? '已关注，点此取消' : '+ 关注')) }}
-            </button>
+            <div class="profile-actions">
+              <button 
+                class="follow-btn message-btn" 
+                @click="goMessage"
+              >
+                私信
+              </button>
+              <button 
+                class="follow-btn" 
+                :class="{ following: isFollowing, self: authorInfo.id === getCurrentUserId() }"
+                :disabled="followLoading || authorInfo.id === getCurrentUserId()"
+                @click="toggleFollow"
+              >
+                {{ authorInfo.id === getCurrentUserId() ? '不能关注自己' : (followLoading ? '处理中...' : (isFollowing ? '已关注，点此取消' : '+ 关注')) }}
+              </button>
+            </div>
           </div>
           
           <div class="works-section">
@@ -310,7 +324,7 @@ const close = () => {
                 :key="note.id"
                 @click="openDetailModal(note.id)"
               >
-                <img :src="note.coverImage" :alt="note.title" class="work-image" />
+                <SkeletonImage :src="note.coverImage" :alt="note.title" :min-height="200" />
                 <div v-if="note.imageCount > 1" class="image-count">{{ note.imageCount }}</div>
               </div>
             </div>
@@ -519,6 +533,25 @@ const close = () => {
     background: rgba(255, 255, 255, 0.2);
     color: #fff;
     border: 2px solid rgba(255, 255, 255, 0.5);
+  }
+}
+
+.profile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.follow-btn.message-btn {
+  background: rgba(255, 255, 255, 0.95);
+  color: #2ec4b5;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   }
 }
 

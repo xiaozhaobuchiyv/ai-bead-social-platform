@@ -5,7 +5,10 @@ import { ElMessage } from 'element-plus';
 import { userApi, noteApi, actionApi, collectionApi, messageApi, followApi } from '@/api';
 import NoteDetailCard from '@/components/NoteDetailCard.vue';
 import XhsIcon from '@/components/XhsIcon.vue';
-import { parseImagesJson, resolveMediaUrl, formatAvatar } from '@/utils/media';
+import SkeletonImage from '@/components/SkeletonImage.vue';
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue';
+import { parseImagesJson, resolveMediaUrl, formatAvatar, DEFAULT_AVATAR } from '@/utils/media';
+import imageCompression from 'browser-image-compression';
 
 const router = useRouter();
 
@@ -49,7 +52,7 @@ const mapNoteItem = (item) => {
   const imagesArray = parseImagesJson(item.images);
   const coverImage = imagesArray.length > 0
     ? resolveMediaUrl(imagesArray[0])
-    : 'https://images.unsplash.com/photo-1504753793650-d4a2b783c15e?w=400';
+    : '';
 
   const likes = Number(item.likes ?? 0);
   const collects = Number(item.collects ?? item.collections ?? item.collection_count ?? 0);
@@ -63,6 +66,7 @@ const mapNoteItem = (item) => {
     videoUrl: resolveMediaUrl(item.video || item.video_url || ''),
     userId: item.user_id || item.userId || item.author_id || item.authorId,
     authorAvatar: formatAvatar(item.avatar || item.authorAvatar),
+    authorAvatarRaw: item.avatar || item.authorAvatar || '',
     authorName: item.nickname || item.authorName || '用户',
     likes,
     collects,
@@ -90,6 +94,8 @@ const selectedNoteId = ref(null);
 // 编辑资料弹窗
 const showEditModal = ref(false);
 const avatarInput = ref(null);
+const avatarUploading = ref(false);
+const avatarPreview = ref('');
 const editForm = ref({
   nickname: '',
   phone: '',
@@ -102,7 +108,6 @@ const editForm = ref({
 const getUserInfo = async () => {
   try {
     const token = localStorage.getItem('token');
-    console.log('当前 token:', token ? '存在' : '不存在');
 
     if (!token) {
       console.error('获取用户信息失败: 未登录');
@@ -110,7 +115,6 @@ const getUserInfo = async () => {
     }
 
     const res = await userApi.getUserInfo();
-    console.log('接口响应:', res);
 
     if (res && res.code === 200) {
       const userData = res.user;
@@ -139,18 +143,62 @@ const getUserInfo = async () => {
 
 // 触发头像上传
 const triggerAvatarUpload = () => {
+  if (avatarUploading.value) return
   avatarInput.value.click();
 };
 
-// 处理头像变更
+// 处理头像变更：即时预览 → 压缩 → 上传 → 回填
 const handleAvatarChange = async (event) => {
-  const file = event.target.files[0];
+  const file = event.target.files && event.target.files[0];
   if (!file) return;
 
-  const formData = new FormData();
-  formData.append('avatar', file);
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件');
+    event.target.value = '';
+    return;
+  }
 
+  // 1) 选中即显示本地预览，给出即时反馈，不再“点了没反应”
+  const previewUrl = URL.createObjectURL(file);
+  avatarPreview.value = previewUrl;
+
+  avatarUploading.value = true;
   try {
+    // 2) 客户端压缩，减小体积，显著降低上传等待（服务端头像上限 5MB）
+    let uploadFile = file;
+    if (file.size > 300 * 1024) {
+      try {
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 0.8,
+          maxWidthOrHeight: 800,
+          useWebWorker: true,
+          fileType: 'image/jpeg',
+          initialQuality: 0.86
+        });
+        if (compressed && compressed.size < file.size) uploadFile = compressed;
+      } catch (err) {
+        console.warn('头像压缩失败，使用原图上传:', err);
+      }
+    }
+
+    const formData = new FormData();
+    // 按实际 MIME 命名扩展名，保证与服务端白名单一致，避免“GIF 内容配 .jpg 文件名”
+    const EXT_BY_TYPE = {
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
+      'image/gif': '.gif'
+    };
+    let filename;
+    if (EXT_BY_TYPE[uploadFile.type]) {
+      filename = 'avatar' + EXT_BY_TYPE[uploadFile.type];
+    } else {
+      const dotIdx = (uploadFile.name || '').lastIndexOf('.');
+      const ext = dotIdx > -1 ? uploadFile.name.slice(dotIdx).toLowerCase() : '.jpg';
+      filename = (uploadFile.name ? uploadFile.name.replace(/\.[^.]+$/, '') : 'avatar') + ext;
+    }
+    formData.append('avatar', uploadFile, filename);
+
     const res = await userApi.updateAvatar(formData);
     if (res.code === 200) {
       const updatedAvatar = formatAvatar(res.avatar);
@@ -168,6 +216,13 @@ const handleAvatarChange = async (event) => {
   } catch (error) {
     console.error('头像上传失败:', error);
     ElMessage.error('头像上传失败');
+  } finally {
+    // 3) 复位上传态与 input（允许重复选择同一张图）；
+    //    objectURL 延迟到 Vue 重渲染后再回收，避免头像闪烁
+    avatarPreview.value = '';
+    avatarUploading.value = false;
+    event.target.value = '';
+    if (previewUrl) setTimeout(() => URL.revokeObjectURL(previewUrl), 0);
   }
 };
 
@@ -582,9 +637,14 @@ watch(myNotes, () => {
       <div class="profile-header">
         <div class="profile-info">
           <div class="avatar-wrapper">
-            <img :src="userInfo?.avatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'"
+            <img :src="avatarPreview || userInfo?.avatar || DEFAULT_AVATAR"
               alt="头像" class="avatar" />
-            <div class="avatar-edit-tag" @click="triggerAvatarUpload">
+            <!-- 上传中遮罩：给出 loading 反馈，避免“卡卡的”毫无反馈 -->
+            <div v-if="avatarUploading" class="avatar-upload-mask">
+              <div class="avatar-upload-spinner"></div>
+              <span>上传中...</span>
+            </div>
+            <div class="avatar-edit-tag" :class="{ disabled: avatarUploading }" @click="triggerAvatarUpload">
               <el-icon :size="13"><Camera /></el-icon>
               <span>更换</span>
             </div>
@@ -687,7 +747,7 @@ watch(myNotes, () => {
                 <div class="note-card" v-for="note in myNotes" :key="note.id" @click="openDetailModal(note.id)">
                   <div class="item-image-wrapper">
                     <video v-if="note.videoUrl" :src="note.videoUrl" class="item-image video-cover" muted playsinline preload="metadata" @loadeddata="holdFirstFrame"></video>
-                    <img v-else :src="note.coverImage" :alt="note.title" class="item-image" loading="lazy" />
+                    <SkeletonImage v-else :src="note.coverImage" :alt="note.title" :min-height="200" />
                     <span v-if="note.videoUrl" class="video-badge"><svg class="play-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
                     <span v-if="!note.videoUrl && note.imageCount > 1" class="image-count-badge">{{ note.imageCount }}</span>
                   </div>
@@ -695,7 +755,7 @@ watch(myNotes, () => {
                     <p class="item-desc">{{ note.description }}</p>
                     <div class="item-footer">
                       <div class="author-row" @click.stop="goToAuthor(note.userId)">
-                        <img :src="note.authorAvatar" :alt="note.authorName" class="author-avatar" @click.stop="goToAuthor(note.userId)" />
+                        <SkeletonAvatar :src="note.authorAvatarRaw ? resolveMediaUrl(note.authorAvatarRaw) : ''" :name="note.authorName" :size="28" @click.stop="goToAuthor(note.userId)" />
                         <div class="author-meta"><span class="author-name">{{ note.authorName }}</span></div>
                       </div>
                       <div class="action-row">
@@ -725,7 +785,7 @@ watch(myNotes, () => {
                 <div class="note-card" v-for="note in myCollections" :key="note.id" @click="openDetailModal(note.id)">
                   <div class="item-image-wrapper">
                     <video v-if="note.videoUrl" :src="note.videoUrl" class="item-image video-cover" muted playsinline preload="metadata" @loadeddata="holdFirstFrame"></video>
-                    <img v-else :src="note.coverImage" :alt="note.title" class="item-image" loading="lazy" />
+                    <SkeletonImage v-else :src="note.coverImage" :alt="note.title" :min-height="200" />
                     <span v-if="note.videoUrl" class="video-badge"><svg class="play-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
                     <span v-if="!note.videoUrl && note.imageCount > 1" class="image-count-badge">{{ note.imageCount }}</span>
                   </div>
@@ -733,7 +793,7 @@ watch(myNotes, () => {
                     <p class="item-desc">{{ note.description }}</p>
                     <div class="item-footer">
                       <div class="author-row" @click.stop="goToAuthor(note.userId)">
-                        <img :src="note.authorAvatar" :alt="note.authorName" class="author-avatar" @click.stop="goToAuthor(note.userId)" />
+                        <SkeletonAvatar :src="note.authorAvatarRaw ? resolveMediaUrl(note.authorAvatarRaw) : ''" :name="note.authorName" :size="28" @click.stop="goToAuthor(note.userId)" />
                         <div class="author-meta"><span class="author-name">{{ note.authorName }}</span></div>
                       </div>
                       <div class="action-row">
@@ -763,7 +823,7 @@ watch(myNotes, () => {
                 <div class="note-card" v-for="note in myLikes" :key="note.id" @click="openDetailModal(note.id)">
                   <div class="item-image-wrapper">
                     <video v-if="note.videoUrl" :src="note.videoUrl" class="item-image video-cover" muted playsinline preload="metadata" @loadeddata="holdFirstFrame"></video>
-                    <img v-else :src="note.coverImage" :alt="note.title" class="item-image" loading="lazy" />
+                    <SkeletonImage v-else :src="note.coverImage" :alt="note.title" :min-height="200" />
                     <span v-if="note.videoUrl" class="video-badge"><svg class="play-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
                     <span v-if="!note.videoUrl && note.imageCount > 1" class="image-count-badge">{{ note.imageCount }}</span>
                   </div>
@@ -771,7 +831,7 @@ watch(myNotes, () => {
                     <p class="item-desc">{{ note.description }}</p>
                     <div class="item-footer">
                       <div class="author-row" @click.stop="goToAuthor(note.userId)">
-                        <img :src="note.authorAvatar" :alt="note.authorName" class="author-avatar" @click.stop="goToAuthor(note.userId)" />
+                        <SkeletonAvatar :src="note.authorAvatarRaw ? resolveMediaUrl(note.authorAvatarRaw) : ''" :name="note.authorName" :size="28" @click.stop="goToAuthor(note.userId)" />
                         <div class="author-meta"><span class="author-name">{{ note.authorName }}</span></div>
                       </div>
                       <div class="action-row">
@@ -801,10 +861,10 @@ watch(myNotes, () => {
               </div>
               <div v-else class="user-list-grid">
                 <div class="user-list-card" v-for="user in myFollows" :key="user.id" @click="goToUserProfile(user.id)">
-                  <img :src="formatAvatar(user.avatar)" :alt="user.nickname" class="user-list-avatar" />
+                  <SkeletonAvatar :src="user.avatar ? resolveMediaUrl(user.avatar) : ''" :name="user.nickname || user.username || '用户'" :size="44" />
                   <div class="user-list-info">
                     <div class="user-list-name">{{ user.nickname || user.username || '用户' }}</div>
-                    <div class="user-list-signature">{{ user.signature || '暂无签名' }}</div>
+                    <div class="user-list-signature">{{ user.signature || '分享生活点滴，记录美好时光' }}</div>
                   </div>
                   <span class="user-list-arrow">›</span>
                 </div>
@@ -827,10 +887,10 @@ watch(myNotes, () => {
               </div>
               <div v-else class="user-list-grid">
                 <div class="user-list-card" v-for="user in myFans" :key="user.id" @click="goToUserProfile(user.id)">
-                  <img :src="formatAvatar(user.avatar)" :alt="user.nickname" class="user-list-avatar" />
+                  <SkeletonAvatar :src="user.avatar ? resolveMediaUrl(user.avatar) : ''" :name="user.nickname || user.username || '用户'" :size="44" />
                   <div class="user-list-info">
                     <div class="user-list-name">{{ user.nickname || user.username || '用户' }}</div>
-                    <div class="user-list-signature">{{ user.signature || '暂无签名' }}</div>
+                    <div class="user-list-signature">{{ user.signature || '分享生活点滴，记录美好时光' }}</div>
                   </div>
                   <div class="user-list-arrow">›</div>
                 </div>
@@ -987,6 +1047,44 @@ watch(myNotes, () => {
   &:hover {
     background: rgba(0, 0, 0, 0.66);
     transform: scale(1.05);
+  }
+
+  &.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+/* 头像上传中的半透明遮罩 + 旋转动画 */
+.avatar-upload-mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #fff;
+  font-size: 12px;
+  backdrop-filter: blur(2px);
+  z-index: 2;
+
+  .avatar-upload-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: avatar-upload-spin 0.8s linear infinite;
+  }
+}
+
+@keyframes avatar-upload-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1410,6 +1508,18 @@ watch(myNotes, () => {
     object-fit: cover;
     background: #f3f4f6;
     pointer-events: none;
+  }
+
+  /* 图片用 SkeletonImage 渲染，其内部 <img> 默认 height:auto，
+     在固定 3:4 竖版盒子里方形/宽图下方会留白、高度与图不符。
+     这里让它撑满盒子并裁剪，保证所有卡片封面一致。 */
+  :deep(.sk-image) {
+    height: 100%;
+    min-height: 0;
+  }
+  :deep(.sk-image .sk-el) {
+    height: 100%;
+    object-fit: cover;
   }
 }
 

@@ -36,7 +36,7 @@
           :key="notice.id"
           @click="handleNoticeClick(notice)"
         >
-          <img class="n-avatar" :src="formatAvatar(notice.from_avatar)" alt="" />
+          <SkeletonAvatar :src="notice.from_avatar ? formatAvatar(notice.from_avatar) : ''" :name="notice.from_nickname || notice.nickname || '用户'" :size="40" />
 
           <div class="n-main">
             <div class="n-head">
@@ -118,6 +118,7 @@ import { ElMessage } from 'element-plus'
 import NoteDetailCard from '@/components/NoteDetailCard.vue'
 import { refreshUnreadBadges } from '@/composables/useUnreadBadges'
 import { formatAvatar, resolveMediaUrl } from '@/utils/media'
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue'
 
 const router = useRouter()
 
@@ -258,7 +259,8 @@ const getActionText = (type) => {
     case 'like': return '赞了你的笔记'
     case 'collect': return '收藏了你的笔记'
     case 'comment': return '评论了你的笔记'
-    case 'mention': return '@ 了你'
+    // 正文（notice.content）本身以「@昵称」开头，避免动作文案与正文出现两个 @
+    case 'mention': return '提到了你'
     case 'follow': return '开始关注你了'
     default: return '与你互动'
   }
@@ -274,8 +276,8 @@ const handleFollow = async (notice) => {
     }
     const res = await followApi.toggleFollow(notice.from_user_id)
     if (res.code === 200) {
-      notice.followed = !!res.isActive
-      ElMessage.success(res.isActive ? '已关注' : '已取消关注')
+      notice.followed = !!res.isFollowing
+      ElMessage.success(res.isFollowing ? '已关注' : '已取消关注')
       window.dispatchEvent(new Event('refreshUnreadBadges'))
     } else {
       ElMessage.error(res.msg || '操作失败')
@@ -583,8 +585,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   background: #fff;
-  color: #475569;
-  border: 1px solid #e4e6e9;
+  color: #2ec4b5;
+  border: 1px solid rgba(46, 196, 181, 0.35);
   border-radius: 999px;
   padding: 5px 12px;
   font-size: 13px;
@@ -592,25 +594,32 @@ onUnmounted(() => {
   transition: all 0.18s ease;
 
   &:hover {
-    background: #f5f6f7;
-    border-color: #d8dade;
+    background: #eefbf8;
+    border-color: rgba(46, 196, 181, 0.5);
   }
 }
 
-/* 通知里的点赞按钮 */
+/* 通知里的点赞按钮（默认中性描边，点赞后为主题色） */
 .n-btn.n-like {
   width: 36px;
   padding: 5px 0;
   justify-content: center;
+  color: #64748b;
+  border-color: #e4e6e9;
 
   svg {
     display: block;
   }
 
+  &:hover {
+    color: #2ec4b5;
+    border-color: rgba(46, 196, 181, 0.4);
+  }
+
   &.active {
-    color: #ff2442;
-    border-color: rgba(255, 36, 66, 0.35);
-    background: rgba(255, 36, 66, 0.06);
+    color: #2ec4b5;
+    border-color: rgba(46, 196, 181, 0.35);
+    background: rgba(46, 196, 181, 0.08);
   }
 }
 

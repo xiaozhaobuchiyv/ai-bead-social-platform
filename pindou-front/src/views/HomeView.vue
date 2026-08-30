@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { noteApi, actionApi, collectionApi, followApi } from '@/api'
 import NoteDetailCard from '@/components/NoteDetailCard.vue'
+import SkeletonImage from '@/components/SkeletonImage.vue'
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue'
 import { parseImagesJson, resolveMediaUrl, formatAvatar } from '@/utils/media'
 
 const route = useRoute()
@@ -25,7 +27,9 @@ const filteredNotes = computed(() => {
     const title = (item.title || '').toLowerCase()
     const description = (item.description || '').toLowerCase()
     const authorName = (item.authorName || '').toLowerCase()
-    return title.includes(keyword) || description.includes(keyword) || authorName.includes(keyword)
+    // 分类为逗号拼接的话题，如「手作,拼豆」，做模糊包含匹配
+    const category = (item.category || '').toLowerCase()
+    return title.includes(keyword) || description.includes(keyword) || authorName.includes(keyword) || category.includes(keyword)
   })
 })
 
@@ -53,11 +57,6 @@ const noteImageCount = (item) => {
   return n > 1 ? n : 0
 }
 
-// 图片加载失败占位
-const handleImageError = (event) => {
-  event.target.src = 'https://images.unsplash.com/photo-1504753793650-d4a2b783c15e?w=400'
-}
-
 // 视频首帧定格，作为卡片封面（autoplay 解码后立即暂停并回到首帧）
 const holdFirstFrame = (event) => {
   const video = event.target
@@ -78,7 +77,7 @@ const onWindowScroll = () => {
     scrollThrottleTimer = null
     const doc = document.documentElement
     const nearBottom = doc.scrollTop + window.innerHeight >= doc.scrollHeight - 600
-    if (nearBottom && !isSearchMode.value) {
+    if (nearBottom) {
       loadMore()
     }
   }, 200)
@@ -88,7 +87,7 @@ const mapNoteItem = (item) => {
   const imagesArray = parseImagesJson(item.images)
   const coverImage = imagesArray.length > 0
     ? resolveMediaUrl(imagesArray[0])
-    : 'https://images.unsplash.com/photo-1504753793650-d4a2b783c15e?w=400'
+    : ''
 
   const likedValue = item.liked ?? item.is_liked ?? item.like_status ?? item.likeStatus ?? false
   const collectedValue = item.collected ?? item.is_collected ?? item.collection_status ?? item.collectionStatus ?? false
@@ -100,9 +99,11 @@ const mapNoteItem = (item) => {
     userId: item.user_id,
     title: item.title,
     description: item.content,
+    category: item.category || '',
     coverImage: coverImage,
     videoUrl: resolveMediaUrl(item.video || item.video_url || item.videoUrl || ''),
     authorAvatar: formatAvatar(item.avatar),
+    authorAvatarRaw: item.avatar || '',
     authorName: item.nickname || '用户',
     likes: Number(item.likes || 0),
     collects,
@@ -131,9 +132,15 @@ const fetchNotes = async (reset = false) => {
   }
 
   try {
-    const listParams = { pageSize: 15, ...(cursor.value ? { cursor: cursor.value } : {}) }
+    const listParams = {
+      pageSize: 15,
+      ...(cursor.value ? { cursor: cursor.value } : {}),
+      ...(isSearchMode.value ? { q: searchKeyword.value } : {})
+    }
     const [notesRes, likesRes, collectionsRes] = await Promise.all([
-      noteApi.getNotesList(listParams),
+      // 搜索模式走服务端搜索接口（标题/内容/分类/作者 模糊匹配 + 游标分页），
+      // 普通模式走 Feed 列表
+      isSearchMode.value ? noteApi.searchNotes(listParams) : noteApi.getNotesList(listParams),
       checkLogin() ? collectionApi.getLikes() : Promise.resolve({ code: 200, list: [] }),
       checkLogin() ? collectionApi.getCollections() : Promise.resolve({ code: 200, list: [] })
     ])
@@ -185,7 +192,7 @@ const fetchNotes = async (reset = false) => {
         notes.value = [...notes.value, ...newNotes.filter((n) => !existingIds.has(n.id))]
       }
       cursor.value = notesRes.nextCursor || null
-      hasMore.value = isSearchMode.value ? false : Boolean(notesRes.hasMore)
+      hasMore.value = Boolean(notesRes.hasMore)
     }
   } catch (error) {
     console.error('获取笔记列表失败:', error)
@@ -503,6 +510,7 @@ const handleLoginSuccess = async () => {
       <div class="waterfall-item" v-for="item in filteredNotes" :key="item.id" @click="openDetailModal(item.id)">
         <div class="item-image-wrapper">
           <!-- 视频笔记：用视频首帧作封面（自动解码后立即定格） -->
+          <div class="sk-video-bg sk-shimmer-bg"></div>
           <video
             v-if="item.videoUrl"
             :src="item.videoUrl"
@@ -513,13 +521,11 @@ const handleLoginSuccess = async () => {
             autoplay
             @loadeddata="holdFirstFrame"
           ></video>
-          <img
+          <SkeletonImage
             v-else
             :src="item.coverImage"
             :alt="item.title"
-            class="item-image"
-            loading="lazy"
-            @error="handleImageError"
+            :min-height="220"
           />
           <!-- 视频角标（右上角小图标） -->
           <div v-if="item.videoUrl" class="video-badge">
@@ -528,10 +534,11 @@ const handleLoginSuccess = async () => {
           <span v-if="!item.videoUrl && noteImageCount(item)" class="image-count-badge">{{ noteImageCount(item) }}</span>
         </div>
         <div class="item-content">
+          <p v-if="item.title" class="item-title">{{ item.title }}</p>
           <p class="item-desc" v-html="highlightText(item.description)"></p>
           <div class="item-footer">
             <div class="author-row" @click.stop="goToAuthor(item.userId)">
-              <img :src="item.authorAvatar" :alt="item.authorName" class="author-avatar" loading="lazy" @click.stop="goToAuthor(item.userId)" />
+              <SkeletonAvatar :src="item.authorAvatarRaw ? resolveMediaUrl(item.authorAvatarRaw) : ''" :name="item.authorName" :size="32" @click.stop="goToAuthor(item.userId)" />
               <div class="author-meta">
                 <span class="author-name">{{ item.authorName }}</span>
                 <span v-if="item.followed" class="follow-badge">已关注</span>
@@ -559,7 +566,7 @@ const handleLoginSuccess = async () => {
     </div>
 
     <!-- 加载更多 -->
-    <div v-if="!loading && hasMore && !isSearchMode" class="load-more">
+    <div v-if="!loading && hasMore" class="load-more">
       <button class="load-more-btn" @click="loadMore" :disabled="loadingMore">
         <span>{{ loadingMore ? '加载中...' : '加载更多' }}</span>
       </button>
@@ -746,6 +753,15 @@ const handleLoginSuccess = async () => {
   display: block;
   pointer-events: none;
   transition: transform 0.35s ease;
+  position: relative;
+  z-index: 1;
+}
+
+/* 视频封面骨架背景（首帧解码/加载前显示 shimmer） */
+.sk-video-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
 .waterfall-item:hover .item-image,
@@ -797,6 +813,18 @@ const handleLoginSuccess = async () => {
 
 .item-content {
   padding: 12px;
+}
+
+.item-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111;
+  line-height: 1.45;
+  margin: 0 0 6px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .item-desc {

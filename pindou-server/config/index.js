@@ -66,6 +66,8 @@ const config = {
     chatModel: process.env.VOLCANO_CHAT_MODEL || '',
     visionModel: process.env.VOLCANO_VISION_MODEL || process.env.VOLCANO_IMAGE_CHAT_MODEL || '',
     imageModel: process.env.VOLCANO_IMAGE_MODEL || '',
+    // 多轮对话携带的上下文消息条数（条数越多 token 成本越高，留意模型上下文窗口上限）
+    contextMessages: parseInt(process.env.AI_CONTEXT_MESSAGES, 10) || 40,
     // 外部依赖调用超时
     requestTimeoutMs: parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000,
   },

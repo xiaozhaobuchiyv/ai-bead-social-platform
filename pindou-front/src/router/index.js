@@ -1,9 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Layout from '@/components/Layout.vue'
 import { useUserStore } from '@/stores/user'
+import { installRouteProgress } from '@/composables/useRouteProgress'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  // 切换页面时回到顶部（浏览器前进/后退则还原原位置），
+  // 避免从很长的首页切到短页面时停留在旧滚动位置造成“卡一下”。
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    return { top: 0 }
+  },
   routes: [
     {
       path: '/',
@@ -67,6 +74,9 @@ const router = createRouter({
     }
   ]
 })
+
+// 注册全局路由加载进度（顶部进度条），避免懒加载切换时空白“卡一下”
+installRouteProgress(router)
 
 router.beforeEach((to, from, next) => {
   const store = useUserStore()

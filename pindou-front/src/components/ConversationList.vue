@@ -11,7 +11,7 @@
       :class="{ active: activeId === conv.target_id }"
       @click="selectConversation(conv.target_id)"
     >
-      <img :src="formatAvatar(conv.avatar)" class="avatar" />
+      <SkeletonAvatar :src="conv.avatar ? formatAvatar(conv.avatar) : ''" :name="conv.nickname || '用户'" :size="44" />
       <div class="conv-info">
         <div class="conv-name">
           {{ conv.nickname }}
@@ -35,6 +35,7 @@
 <script setup>
 import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { messageApi } from '@/api'
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue'
 import { refreshUnreadBadges } from '@/composables/useUnreadBadges'
 
 const props = defineProps({

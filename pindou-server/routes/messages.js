@@ -3,6 +3,25 @@ const router = express.Router();
 const pool = require("../config/db");
 const jwt = require("jsonwebtoken");
 const { JWT_SECRET } = require("../config/jwt");
+const { imageUpload, imgUrl } = require("../utils/upload");
+
+// 上传私信图片（复用统一图片存储，返回 /uploads/images/xxx 相对路径）
+router.post("/upload-image", (req, res) => {
+  imageUpload.array('images', 5)(req, res, async (err) => {
+    if (err) return res.status(400).json({ code: 400, msg: `图片上传失败: ${err.message}` });
+    try {
+      const token = req.headers.token;
+      if (!token) return res.json({ code: 401, msg: "请登录" });
+      jwt.verify(token, JWT_SECRET);
+      if (!req.files || req.files.length === 0) return res.json({ code: 400, msg: "请选择图片" });
+      const images = req.files.map((f) => imgUrl(f.filename));
+      res.json({ code: 200, msg: "上传成功", data: { images } });
+    } catch (error) {
+      console.error("消息图片上传失败:", error);
+      res.status(500).json({ code: 500, msg: "上传失败" });
+    }
+  });
+});
 
 // 获取会话列表
 router.get("/conversations", async (req, res) => {
@@ -20,6 +39,7 @@ router.get("/conversations", async (req, res) => {
          m.from_user_id,
          m.to_user_id,
          m.content,
+         m.image,
          m.create_time,
          m.is_read,
          u1.nickname AS from_nickname,
@@ -49,7 +69,7 @@ router.get("/conversations", async (req, res) => {
         nickname: isIncoming ? message.from_nickname : message.to_nickname,
         avatar: isIncoming ? message.from_avatar : message.to_avatar,
         last_time: message.create_time,
-        last_message: message.content,
+        last_message: message.image ? '[图片]' : message.content,
         unread_count: 0,
       });
     }
@@ -132,15 +152,15 @@ router.post("/send", async (req, res) => {
     }
 
     const { id: userId } = jwt.verify(token, JWT_SECRET);
-    const { targetId, content } = req.body;
+    const { targetId, content, image } = req.body;
 
-    if (!content?.trim()) {
+    if (!content?.trim() && !image) {
       return res.json({ code: 400, msg: "消息内容不能为空" });
     }
 
     const [result] = await pool.query(
-      "INSERT INTO messages(from_user_id, to_user_id, content) VALUES(?, ?, ?)",
-      [userId, targetId, content.trim()]
+      "INSERT INTO messages(from_user_id, to_user_id, content, image) VALUES(?, ?, ?, ?)",
+      [userId, targetId, content?.trim() || '', image || null]
     );
 
     res.json({

@@ -10,11 +10,18 @@ const { imageUpload, videoUpload, imgUrl, videoUrl } = require('../utils/upload'
 const parseJsonArray = (value) => {
   if (!value) return []
   if (Array.isArray(value)) return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return []
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return []
+    // 尝试解析 JSON 数组；失败则视为单个路径字符串（multer 唯一同名文本字段给的是 string）
+    try {
+      const parsed = JSON.parse(trimmed)
+      return Array.isArray(parsed) ? parsed : [parsed]
+    } catch {
+      return [trimmed]
+    }
   }
+  return []
 }
 
 const collectImageSources = (bodyImages, files = []) => {
@@ -31,6 +38,17 @@ const collectImageSources = (bodyImages, files = []) => {
 // 响应保持旧版扁平结构 { code, list, nextCursor, hasMore }，兼容现有前端
 const getFeed = asyncHandler(async (req, res) => {
   const result = await noteService.listFeed({
+    cursor: req.query.cursor,
+    pageSize: parseInt(req.query.pageSize, 10) || 10,
+    userId: req.user?.id || null,
+  })
+  res.json({ code: 200, list: result.list, nextCursor: result.nextCursor, hasMore: result.hasMore })
+})
+
+// ---------- 关键词搜索（标题/内容/分类 模糊匹配 + 游标分页） ----------
+const getSearch = asyncHandler(async (req, res) => {
+  const result = await noteService.searchNotes({
+    keyword: req.query.q,
     cursor: req.query.cursor,
     pageSize: parseInt(req.query.pageSize, 10) || 10,
     userId: req.user?.id || null,
@@ -144,4 +162,4 @@ const update = (req, res, next) => {
   })
 }
 
-module.exports = { getFeed, getDetail, getByCategory, getMine, getByAuthor, publish, remove, update, uploadVideo }
+module.exports = { getFeed, getSearch, getDetail, getByCategory, getMine, getByAuthor, publish, remove, update, uploadVideo }

@@ -336,6 +336,7 @@ const sendMessage = async (mode = selectedTaskMode.value) => {
           ...(getAuthToken() ? { token: getAuthToken() } : {}),
         },
         body: JSON.stringify({
+          messages: chatList.value.slice(0, -1),
           images: imageUrls,
           prompt: content || '请帮我看看这张图片~',
           mode: imageTaskMode,
@@ -488,6 +489,7 @@ const sendMessageWithImages = async (imageUrls, textContent, mode = 'analyze') =
         ...(getAuthToken() ? { token: getAuthToken() } : {}),
       },
       body: JSON.stringify({
+        messages: chatList.value.slice(0, -1),
         images: imageUrls,
         prompt: textContent,
         mode,
@@ -550,7 +552,12 @@ onBeforeUnmount(() => {
 
 const downloadImage = async (imageUrl, filename = 'ai-image') => {
   try {
-    const response = await fetch(imageUrl)
+    // 远程图片（AI 生成，如火山方舟 TOS）无 CORS 头，直接 fetch 会被拦。
+    // 改走后端代理接口 /api/ai/proxy-image（同源，无 CORS 问题）。
+    const target = getApiBaseUrl() && /^https?:\/\//i.test(imageUrl) && !imageUrl.startsWith(getApiBaseUrl())
+      ? `/api/ai/proxy-image?url=${encodeURIComponent(imageUrl)}`
+      : imageUrl
+    const response = await fetch(target)
     const blob = await response.blob()
     const sourceUrl = URL.createObjectURL(blob)
 

@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import LoginCard from '@/components/LoginCard.vue'
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue'
 
 const router = useRouter()
 
@@ -100,7 +101,13 @@ const selectMenu = (item) => {
   }
   
   if (path === '/' && currentPath === '/') {
-    window.dispatchEvent(new Event('refreshHome'))
+    // 在搜索页（/?q=...）点「首页」→ 直接回到普通首页（清空搜索）；
+    // 普通首页再点「首页」→ 刷新列表
+    if (router.currentRoute.value.query.q) {
+      router.push('/')
+    } else {
+      window.dispatchEvent(new Event('refreshHome'))
+    }
     return
   }
   
@@ -125,7 +132,13 @@ const handleMenuSelect = (index) => {
   }
   
   if (index === '/' && currentPath === '/') {
-    window.dispatchEvent(new Event('refreshHome'))
+    // 在搜索页（/?q=...）点「首页」→ 直接回到普通首页（清空搜索）；
+    // 普通首页再点「首页」→ 刷新列表
+    if (router.currentRoute.value.query.q) {
+      router.push('/')
+    } else {
+      window.dispatchEvent(new Event('refreshHome'))
+    }
     return
   }
   
@@ -149,12 +162,10 @@ const handleLogin = () => {
 
 // 登录成功回调
 const handleLoginSuccess = (user) => {
-  console.log('handleLoginSuccess - 收到用户:', user)
   isLoggedIn.value = true
   user.avatar = formatAvatar(user.avatar)
   userInfo.value = user
   showLoginCard.value = false
-  console.log('handleLoginSuccess - isLoggedIn:', isLoggedIn.value)
   window.dispatchEvent(new Event('loginSuccess'))
   refreshUnreadBadges()
 
@@ -244,8 +255,8 @@ const currentRoute = computed(() => {
         <button @click="handleLogin">登录</button>
       </div>
       <div v-else class="user-info-wrapper" :class="{ active: currentRoute === '/user' }" @click="handleLogin">
-        <el-avatar :size="36"
-          :src="userInfo?.avatar || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'" />
+        <!-- 用 SkeletonAvatar 渲染：有头像显示头像，无头像/加载失败显示昵称首字，避免破图 -->
+        <SkeletonAvatar :src="userInfo?.avatar || ''" :name="userInfo?.nickname || userInfo?.username || '我'" :size="36" />
         <span class="username">我的</span>
       </div>
     </el-menu>

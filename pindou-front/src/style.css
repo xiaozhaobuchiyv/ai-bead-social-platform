@@ -47,3 +47,19 @@ body {
   width: 0;
   height: 0;
 }
+
+/* ===== 全局骨架屏（shimmer）样式：所有骨架占位共用一套观感 ===== */
+@keyframes sk-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+.sk-shimmer-bg {
+  background: linear-gradient(90deg, #eef1f4 25%, #e3e8ee 37%, #eef1f4 63%);
+  background-size: 400% 100%;
+  animation: sk-shimmer 1.4s ease infinite;
+}
+
+.sk-fallback-bg {
+  background: linear-gradient(180deg, #f6f7f9 0%, #eef1f4 100%);
+}

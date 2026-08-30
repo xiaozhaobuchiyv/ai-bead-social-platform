@@ -30,6 +30,7 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ConversationList from '@/components/ConversationList.vue'
 import ChatWindow from '@/components/ChatWindow.vue'
@@ -37,6 +38,7 @@ import { messageApi } from '@/api'
 import { refreshUnreadBadges } from '@/composables/useUnreadBadges'
 
 const selectedId = ref(null)
+const route = useRoute()
 
 const syncUnreadState = async () => {
   await refreshUnreadBadges()
@@ -70,6 +72,11 @@ const clearAllUnread = async () => {
 
 onMounted(() => {
   document.body.classList.add('message-view-active')
+  // 支持从用户主页/作者卡片「发私信」进入：?target=<userId>
+  const target = Number(route.query.target)
+  if (target && target > 0) {
+    selectedId.value = target
+  }
 })
 
 onUnmounted(() => {

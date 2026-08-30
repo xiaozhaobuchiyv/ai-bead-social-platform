@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { noteApi, actionApi, commentApi, followApi } from '@/api'
 import { resolveMediaUrl, parseImagesJson, formatAvatar as resolveAvatar } from '@/utils/media'
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
@@ -139,11 +140,15 @@ const applyNoteDetail = (detail) => {
   const propLiked = normalizeBoolean(props.noteData?.liked)
   const propCollected = normalizeBoolean(props.noteData?.collected)
 
-  // 合并而不是整体替换：局部更新（如评论后的 noteData 只有部分字段，且 images/nickname 等为 undefined）
-  // 时，只让「有值」的字段覆盖，其余保留已加载的完整详情，避免作品图/作者被重置为默认。
+  // 跨笔记加载（打开另一条作品）时整体替换，避免把上一条笔记的
+  // video/图片等字段残留合并进来（否则会出现「标题对了但视频还是上一条」）
+  const isSameNote =
+    detail.id != null && note.value?.id != null && String(detail.id) === String(note.value.id)
+  const base = isSameNote ? { ...(note.value || {}) } : {}
+
   const definedEntries = Object.entries(detail).filter(([, v]) => v !== undefined && v !== null)
   const mergedDetail = {
-    ...(note.value || {}),
+    ...base,
     ...Object.fromEntries(definedEntries),
     liked: detailLiked || propLiked,
     collected: detailCollected || propCollected
@@ -177,11 +182,9 @@ const loadFollowedAuthors = async () => {
 
 const fetchNoteDetail = async (id) => {
   if (!id) {
-    console.log('fetchNoteDetail: id为空，不获取')
     return
   }
-  
-  console.log('fetchNoteDetail: 开始获取笔记详情, id=', id)
+
   loading.value = true
   try {
     const token = localStorage.getItem('token')
@@ -199,20 +202,12 @@ const fetchNoteDetail = async (id) => {
     }
 
     const res = await noteApi.getNotesDetail(id)
-    console.log('fetchNoteDetail: 收到响应', res)
-    console.log('fetchNoteDetail: res.code=', res.code)
-    
+
     if (res.code === 200) {
-      console.log('fetchNoteDetail: res.detail=', res.detail)
       applyNoteDetail(res.detail)
-      console.log('fetchNoteDetail: note.value设置后=', note.value)
-      console.log('fetchNoteDetail: 作者昵称:', res.detail?.nickname)
-      console.log('fetchNoteDetail: 作者头像:', res.detail?.avatar)
-      
+
       // 获取评论列表
       await fetchComments(id)
-    } else {
-      console.log('fetchNoteDetail: 响应码不是200, res=', res)
     }
   } catch (error) {
     console.error('fetchNoteDetail: 获取笔记详情失败:', error)
@@ -547,7 +542,11 @@ const editNote = () => {
     content: note.value.content,
     images: note.value.images,
     category: note.value.category,
-    isPublished: true
+    isPublished: true,
+    // 视频笔记编辑时也要带上 video，否则 PublishView 的 fillDraftForm
+    // 读不到视频，导致视频预览不渲染
+    video: note.value?.video || note.value?.video_url || note.value?.videoUrl || '',
+    videoUrl: note.value?.video || note.value?.video_url || note.value?.videoUrl || ''
   }
   localStorage.setItem('editingNote', JSON.stringify(noteData))
   emit('edited')
@@ -771,6 +770,10 @@ watch(() => [props.noteId, props.show], async ([newId, newShow]) => {
   }
   if (newId && newShow) {
     resetCommentState()
+    // 打开新作品时立即清掉上一个作品的残留与加载态，
+    // 避免先渲染上一条的视频/图片，等新详情回来后再展示
+    note.value = null
+    loading.value = true
     await loadFollowedAuthors()
     fetchNoteDetail(newId)
   }
@@ -807,14 +810,16 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
           <!-- 左侧图片/视频区域 -->
           <div class="detail-left">
             <div class="image-container">
-              <!-- 视频笔记：播放器 -->
+              <!-- 视频笔记：播放器（:key 强制在切换作品时重建视频元素，避免仍播上一条） -->
               <video
                 v-if="noteVideoUrl"
+                :key="note.id"
                 :src="noteVideoUrl"
                 controls
                 autoplay
                 playsinline
                 preload="metadata"
+                v-video-volume
                 class="modal-video"
               ></video>
               <!-- 图片笔记：轮播 -->
@@ -863,6 +868,7 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
 
             <!-- 内容区域 -->
             <div class="content-section">
+              <h1 v-if="note.title" class="content-title">{{ note.title }}</h1>
               <p class="content-text">{{ note.content }}</p>
               <div class="tags-section">
                 <span v-for="tag in tags" :key="tag" class="tag-item">{{ tag }}</span>
@@ -886,7 +892,7 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
                     :data-comment-id="comment.id"
                     :class="{ 'is-me': comment.user_id === currentUserId, highlighted: Number(highlightedCommentId) === Number(comment.id) }"
                   >
-                    <img :src="comment.avatar" :alt="getCommentDisplayName(comment)" class="comment-avatar" @click="openAuthorFromAvatar(comment.user_id || comment.userId)" />
+                    <SkeletonAvatar :src="comment.avatar || ''" :name="getCommentDisplayName(comment)" :size="36" @click="openAuthorFromAvatar(comment.user_id || comment.userId)" />
                     <div class="comment-content">
                       <div class="comment-topline">
                         <span class="comment-author">{{ getCommentDisplayName(comment) }}</span>
@@ -923,7 +929,7 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
                       class="reply-item"
                       :class="{ 'is-me': reply.user_id === currentUserId }"
                     >
-                      <img :src="reply.avatar" :alt="getCommentDisplayName(reply)" class="reply-avatar" @click="openAuthorFromAvatar(reply.user_id || reply.userId)" />
+                      <SkeletonAvatar :src="reply.avatar || ''" :name="getCommentDisplayName(reply)" :size="28" @click="openAuthorFromAvatar(reply.user_id || reply.userId)" />
                       <div class="reply-body">
                         <div class="reply-meta">
                           <span class="reply-author">{{ getCommentDisplayName(reply) }}</span>
@@ -1370,6 +1376,14 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
 
 .content-section {
   padding: 16px 0;
+}
+
+.content-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111;
+  line-height: 1.5;
+  margin: 0 0 12px 0;
 }
 
 .content-text {
@@ -1976,7 +1990,7 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
   padding: 0 20px;
   border: none;
   border-radius: 999px;
-  background: #ff2442;
+  background: linear-gradient(135deg, #2ec4b5 0%, #26a89d 100%);
   color: #fff;
   font-size: 14px;
   cursor: pointer;

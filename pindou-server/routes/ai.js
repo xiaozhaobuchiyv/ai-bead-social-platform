@@ -51,6 +51,28 @@ const normalizeClientMessage = (item) => ({
         : [],
 })
 
+/**
+ * 把一条前端消息转成模型可读的 content：
+ *  - 纯文本 → 字符串
+ *  - 带图 → 数组 [{type:'text'}, {type:'image_url', image_url:{url:'data:...'}}]
+ * 图片统一转成 data URL（否则外部模型无法访问 localhost 图片），转换失败则跳过该图。
+ */
+const toVisionContent = async (msg) => {
+  const imgs = [...(msg.imageUrls || []), msg.imageUrl].filter(Boolean)
+  if (!imgs.length) return msg.content
+  const parts = []
+  if (msg.content) parts.push({ type: 'text', text: msg.content })
+  for (const url of imgs) {
+    try {
+      const dataUrl = await aiService.fileUrlToDataUrl(url)
+      parts.push({ type: 'image_url', image_url: { url: dataUrl } })
+    } catch (e) {
+      logger.warn({ err: e, url }, '历史图片转 data URL 失败，已跳过')
+    }
+  }
+  return parts
+}
+
 // ==================== 历史记录 ====================
 
 router.get('/history', optionalAuth, async (req, res) => {
@@ -133,7 +155,7 @@ router.post('/chat', assertAiConfigured, optionalAuth, validate({ prompt: 'maxLe
 
   if (messages && messages.length > 0) {
     const publicBaseUrl = getPublicBaseUrl(req)
-    for (const msg of messages.slice(-20)) {
+    for (const msg of messages.slice(-config.ai.contextMessages)) {
       if (msg.role !== 'user' && msg.role !== 'assistant') continue
       if (!msg.content && !msg.imageUrls && !msg.imageUrl) continue
       let content = msg.content || ''
@@ -192,7 +214,7 @@ router.post('/chat', assertAiConfigured, optionalAuth, validate({ prompt: 'maxLe
 // ==================== 带图对话（分析 / 图生图） ====================
 
 router.post('/chat-with-image', assertAiConfigured, optionalAuth, async (req, res) => {
-  const { images, prompt, mode } = req.body || {}
+  const { images, prompt, mode, messages } = req.body || {}
   if (!prompt && (!images || images.length === 0)) {
     return res.status(400).json({ code: 400, msg: '请输入聊天内容或上传图片' })
   }
@@ -267,7 +289,19 @@ router.post('/chat-with-image', assertAiConfigured, optionalAuth, async (req, re
       role: 'system',
       content: '你是拼小豆，一个热情、专业、有亲和力的拼豆创作助手。你用「~」结尾让你的语气更有活力。你能回答拼豆图纸设计、配色方案、工具选购、创意灵感等问题。如果用户上传了图片，请先仔细分析图片内容，再给出专业、具体、可执行的拼豆相关建议。请用中文回复，保持友好热情的语气。',
     }]
-    if (visionImageUrls.length) {
+
+    if (messages && messages.length > 0) {
+      // 多轮：把对话历史（含当前这一轮的图和文字）一起作为上下文，模型即可记住前文
+      const contextMessages = messages.slice(-config.ai.contextMessages)
+      for (const msg of contextMessages) {
+        if (msg.role !== 'user' && msg.role !== 'assistant') continue
+        if (!msg.content && !msg.imageUrls?.length && !msg.imageUrl) continue
+        const content = await toVisionContent(msg)
+        if (content === '' || (Array.isArray(content) && content.length === 0)) continue
+        chatMessages.push({ role: msg.role, content })
+      }
+    } else if (visionImageUrls.length) {
+      // 兼容旧调用：仅当前一轮
       chatMessages.push({
         role: 'user',
         content: [
@@ -336,6 +370,29 @@ router.post('/convert', optionalAuth, async (req, res) => {
   } catch (error) {
     logger.error({ err: error }, '图纸转换失败')
     res.status(500).json({ code: 500, msg: error.message || '图纸转换失败' })
+  }
+})
+
+// ==================== 代理下载远程图片（绕过浏览器 CORS） ====================
+// AI 生成的图片托管在火山方舟 TOS（如 *volces.com），没有给前端返回 CORS 头，
+// 浏览器直接 fetch 会被拦。改由后端拉取后转发（服务端无 CORS 限制，且后端已全局配 CORS）。
+router.get('/proxy-image', async (req, res) => {
+  const url = req.query.url
+  if (!url) return res.status(400).json({ code: 400, msg: '缺少 url 参数' })
+  try {
+    pindouService.assertSafeRemoteUrl(url)
+  } catch (e) {
+    return res.status(400).json({ code: 400, msg: e.message })
+  }
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 })
+    const contentType = response.headers['content-type'] || 'image/png'
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Cache-Control', 'public, max-age=3600')
+    res.send(Buffer.from(response.data))
+  } catch (error) {
+    logger.error({ err: error, url }, '代理下载远程图片失败')
+    res.status(502).json({ code: 502, msg: '下载远程图片失败' })
   }
 })
 

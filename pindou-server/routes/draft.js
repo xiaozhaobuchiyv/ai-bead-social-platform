@@ -11,11 +11,20 @@ const { imageUpload, imgUrl } = require("../utils/upload");
 const mergeImages = (bodyImages, files = []) => {
   let existing = [];
   if (bodyImages) {
-    try {
-      existing = typeof bodyImages === 'string' ? JSON.parse(bodyImages) : bodyImages;
-      if (!Array.isArray(existing)) existing = [];
-    } catch {
-      existing = [];
+    if (Array.isArray(bodyImages)) {
+      existing = bodyImages;
+    } else if (typeof bodyImages === 'string') {
+      const trimmed = bodyImages.trim();
+      if (trimmed) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          existing = Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          // multer 在「唯一同名文本字段」时给的是单个字符串（非 JSON），
+          // 例如 '/uploads/images/a.jpg'；应视为单元素数组，否则旧图会被丢弃
+          existing = [trimmed];
+        }
+      }
     }
   }
   const uploaded = files.map((f) => imgUrl(f.filename));
@@ -28,11 +37,11 @@ router.post("/save", requireAuth, (req, res, next) => {
     if (err) return res.status(400).json({ code: 400, msg: `文件上传失败: ${err.message}` });
     try {
       const { title = '', content = '', category = '', video } = req.body;
-      await pool.query(
+      const [result] = await pool.query(
         "INSERT INTO drafts(user_id, title, content, images, video, category) VALUES(?,?,?,?,?,?)",
-        [req.user.id, title, content, mergeImages(req.body.images, req.files), video || null, category || '其他'],
+        [req.user.id, title, content, mergeImages(req.body.images, req.files), video || null, category],
       );
-      res.json({ code: 200, msg: "保存草稿成功" });
+      res.json({ code: 200, msg: "保存草稿成功", id: result.insertId });
     } catch (error) {
       next(error);
     }
@@ -75,7 +84,7 @@ const handleEdit = (req, res, next) => {
       const images = mergeImages(req.body.images, req.files);
       const [result] = await pool.query(
         "UPDATE drafts SET title=?, content=?, images=?, video=?, category=? WHERE id=? AND user_id=?",
-        [title, content, images, video || null, category || '其他', req.params.draftId, req.user.id],
+        [title, content, images, video || null, category, req.params.draftId, req.user.id],
       );
       if (result.affectedRows === 0) return res.json({ code: 404, msg: "草稿不存在或无权限修改" });
       res.json({ code: 200, msg: "草稿修改成功" });
@@ -131,7 +140,7 @@ router.post("/publish/:draftId", requireAuth, async (req, res, next) => {
     const draft = draftArr[0];
     await connection.query(
       "INSERT INTO notes(title, content, images, video, user_id, category) VALUES(?,?,?,?,?,?)",
-      [draft.title, draft.content, draft.images, draft.video || null, draft.user_id, draft.category || '其他'],
+      [draft.title, draft.content, draft.images, draft.video || null, draft.user_id, draft.category || ''],
     );
     await connection.query("DELETE FROM drafts WHERE id=? AND user_id=?", [draft.id, draft.user_id]);
     await connection.commit();

@@ -11,6 +11,9 @@ const { requireAuth, optionalAuth } = require('../middleware/auth')
 // 首页 Feed（游标分页，可选登录）
 router.get('/list', optionalAuth, controller.getFeed)
 
+// 关键词搜索（标题/内容/分类 模糊匹配，游标分页，可选登录）
+router.get('/search', optionalAuth, controller.getSearch)
+
 // 笔记详情（可选登录）
 router.get('/detail/:id', optionalAuth, controller.getDetail)
 

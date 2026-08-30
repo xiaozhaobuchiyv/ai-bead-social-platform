@@ -123,6 +123,64 @@ async function listByCategory(category, { page = 1, pageSize = 10, userId = null
   }
 }
 
+/**
+ * 关键词搜索（模糊匹配标题 / 内容 / 分类 / 作者昵称，游标分页）
+ * 标题/内容/分类走 FULLTEXT(ngram) 索引：MATCH ... AGAINST(IN BOOLEAN MODE)，
+ * 作者昵称仍用 LIKE（作者量级小）。关键词过短（<2 字，ngram 无法切词）时回退 LIKE。
+ * 搜索结果不缓存（关键词无限组合，缓存命中率低）
+ */
+async function searchNotes({ keyword, cursor, pageSize = 10, userId = null } = {}) {
+  const kw = (keyword || '').trim()
+  if (!kw) return { list: [], nextCursor: null, hasMore: false }
+
+  const { cursorTime, cursorId } = parseCursor({ cursor, pageSize })
+  const cursorDateTime = cursorTime ? toDateTime(cursorTime) : null
+  const like = `%${kw}%`
+
+  // 布尔模式：把空白分隔的每个词转成「+词」（都须命中），并去掉引号/反斜杠防注入
+  const booleanQuery = kw
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => `+"${t.replace(/["\\]/g, '')}"`)
+    .join(' ')
+
+  const params = []
+  const conditions = []
+
+  // ngram 默认分词长度为 2，过短关键词用全文索引命中不了，回退 LIKE（全表扫，但量小）
+  const useFulltext = booleanQuery.length > 0 && kw.length >= 2
+  if (useFulltext) {
+    conditions.push('(MATCH(n.title, n.content, n.category) AGAINST (? IN BOOLEAN MODE) OR u.nickname LIKE ?)')
+    params.push(booleanQuery, like)
+  } else {
+    conditions.push('(n.title LIKE ? OR n.content LIKE ? OR n.category LIKE ? OR u.nickname LIKE ?)')
+    params.push(like, like, like, like)
+  }
+
+  if (cursorDateTime && cursorId) {
+    conditions.push('(n.create_time < ? OR (n.create_time = ? AND n.id < ?))')
+    params.push(cursorDateTime, cursorDateTime, cursorId)
+  } else if (cursorId) {
+    conditions.push('n.id < ?')
+    params.push(cursorId)
+  }
+
+  const [rows] = await pool.query(
+    `${NOTE_SELECT} WHERE ${conditions.join(' AND ')} ${GROUP_BY} ORDER BY n.create_time DESC, n.id DESC LIMIT ?`,
+    [...params, pageSize + 1]
+  )
+
+  const hasMore = rows.length > pageSize
+  const pageRows = rows.slice(0, pageSize)
+  const nextCursor = hasMore ? buildCursor(pageRows[pageRows.length - 1]) : null
+  const { liked, collected } = await getUserActionSets(userId, pageRows.map((r) => r.id))
+  return {
+    list: applyActionFlags(pageRows.map(normalizeNote), liked, collected),
+    nextCursor,
+    hasMore,
+  }
+}
+
 /** 我的笔记 / 作者笔记（分页） */
 async function listByUser(ownerId, { page = 1, pageSize = 10, userId = null } = {}) {
   const offset = (page - 1) * pageSize
@@ -142,7 +200,7 @@ async function listByUser(ownerId, { page = 1, pageSize = 10, userId = null } = 
 async function publish({ userId, title, content, category, imagesJson, video, region }) {
   const [result] = await pool.query(
     'INSERT INTO notes(title, content, images, video, user_id, category, region) VALUES(?, ?, ?, ?, ?, ?, ?)',
-    [title, content, imagesJson, video || null, userId, category || '其他', region || null]
+    [title, content, imagesJson, video || null, userId, category || '', region || null]
   )
   await cache.delByPrefix('feed:v1:')
   return result.insertId
@@ -159,7 +217,7 @@ async function remove(noteId, userId) {
 async function update(noteId, userId, { title, content, category, imagesJson, video }) {
   const [result] = await pool.query(
     'UPDATE notes SET title = ?, content = ?, category = ?, images = ?, video = ? WHERE id = ? AND user_id = ?',
-    [title, content, category || '其他', imagesJson, video || null, noteId, userId]
+    [title, content, category || '', imagesJson, video || null, noteId, userId]
   )
   if (result.affectedRows === 0) throw new HttpError(404, '笔记不存在或无权限修改')
   await cache.delByPrefix('feed:v1:')
@@ -170,6 +228,7 @@ module.exports = {
   getDetail,
   listByCategory,
   listByUser,
+  searchNotes,
   publish,
   remove,
   update,

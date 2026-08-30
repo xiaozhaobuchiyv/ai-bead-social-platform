@@ -9,11 +9,11 @@
     <template v-else-if="user">
       <!-- 顶部资料 -->
       <div class="p-header">
-        <img :src="formatAvatar(user.avatar)" alt="头像" class="p-avatar" />
+        <SkeletonAvatar :src="user.avatar ? resolveMediaUrl(user.avatar) : ''" :name="user.nickname || user.username || '用户'" :size="96" />
         <div class="p-info">
           <div class="p-name">{{ user.nickname || user.username || '用户' }}</div>
           <div class="p-id">品号: {{ user.id ? (10000000 + parseInt(user.id)) : '-' }}<template v-if="user.region"> · IP属地：{{ user.region }}</template></div>
-          <div class="p-bio">{{ user.signature || '这个人很神秘，什么都没有写~' }}</div>
+          <div class="p-bio">{{ user.signature || '分享生活点滴，记录美好时光' }}</div>
           <div class="p-stats">
             <span class="stat"><b>{{ stats.works }}</b> 作品</span>
             <span class="stat"><b>{{ stats.follows }}</b> 关注</span>
@@ -22,9 +22,12 @@
           </div>
         </div>
         <template v-if="!isSelf">
-          <button class="p-follow" :class="{ followed: isFollowing }" @click="toggleFollow">
-            {{ isFollowing ? '取消关注' : '关注' }}
-          </button>
+          <div class="p-actions">
+            <button class="p-message" @click="goMessage">私信</button>
+            <button class="p-follow" :class="{ followed: isFollowing }" @click="toggleFollow">
+              {{ isFollowing ? '取消关注' : '关注' }}
+            </button>
+          </div>
         </template>
       </div>
 
@@ -55,7 +58,7 @@
                 autoplay
                 @loadeddata="holdFirstFrame"
               ></video>
-              <img v-else :src="note.coverImage" :alt="note.title" class="note-image" loading="lazy" />
+              <SkeletonImage v-else :src="note.coverImage" :alt="note.title" :min-height="200" />
               <div v-if="note.videoUrl" class="video-badge"><svg class="play-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>
             </div>
             <div class="note-info">
@@ -94,6 +97,8 @@ import { userApi, noteApi, followApi } from '@/api'
 import { formatAvatar, resolveMediaUrl, parseImagesJson } from '@/utils/media'
 import { ElMessage } from 'element-plus'
 import NoteDetailCard from '@/components/NoteDetailCard.vue'
+import SkeletonImage from '@/components/SkeletonImage.vue'
+import SkeletonAvatar from '@/components/SkeletonAvatar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -123,7 +128,7 @@ const mapNote = (item) => {
     id: item.id,
     title: item.title,
     description: item.content,
-    coverImage: imgs.length ? resolveMediaUrl(imgs[0]) : 'https://images.unsplash.com/photo-1504753793650-d4a2b783c15e?w=400',
+    coverImage: imgs.length ? resolveMediaUrl(imgs[0]) : '',
     videoUrl: resolveMediaUrl(item.video || item.video_url || ''),
     likes: Number(item.likes || 0),
     collects: Number(item.collects || 0),
@@ -165,6 +170,10 @@ const fetchNotes = async () => {
   }
 }
 
+const goMessage = () => {
+  router.push(`/message?target=${userId}`)
+}
+
 const toggleFollow = async () => {
   const token = localStorage.getItem('token')
   if (!token) {
@@ -174,8 +183,8 @@ const toggleFollow = async () => {
   try {
     const res = await followApi.toggleFollow(userId)
     if (res.code === 200) {
-      isFollowing.value = !!res.isActive
-      stats.value.fans += isFollowing.value ? 1 : -1
+      isFollowing.value = !!res.isFollowing
+      stats.value.fans = typeof res.followers !== 'undefined' ? Number(res.followers) : (stats.value.fans += isFollowing.value ? 1 : -1)
       ElMessage.success(isFollowing.value ? '已关注' : '已取消关注')
     } else {
       ElMessage.error(res.msg || '操作失败')
@@ -289,10 +298,36 @@ onMounted(() => {
   }
 }
 
-.p-follow {
+.p-actions {
   position: absolute;
   top: 40px;
   right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.p-message {
+  min-width: 60px;
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid #e3e8ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #2ec4b5;
+    color: #0f766e;
+    background: #eefbf8;
+  }
+}
+
+.p-follow {
   min-width: 76px;
   height: 34px;
   padding: 0 18px;

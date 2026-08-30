@@ -2,6 +2,10 @@
 import SideBar from '@/components/SideBar.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useRouteProgress } from '@/composables/useRouteProgress'
+
+// 顶部路由加载进度条（懒加载 chunk 下载期间给出即时反馈）
+const routeLoading = useRouteProgress()
 
 const route = useRoute()
 const router = useRouter()
@@ -76,6 +80,10 @@ onMounted(() => {
 </script>
 <template>
   <div class="layout-container">
+    <!-- 路由切换进度条（顶部固定，避免懒加载/切换时空白“卡一下”） -->
+    <div v-show="routeLoading" class="route-progress" aria-hidden="true">
+      <span class="route-progress-bar"></span>
+    </div>
     <SideBar />
     <div class="main-content">
       <el-header v-if="showHeader">
@@ -375,12 +383,45 @@ onMounted(() => {
 
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity 0.16s ease;
 }
 
 .page-fade-enter-from,
 .page-fade-leave-to {
   opacity: 0;
-  transform: translateY(6px);
+}
+
+/* —— 顶部路由加载进度条 —— */
+.route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 2000;
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(46, 196, 181, 0.08);
+
+  .route-progress-bar {
+    display: block;
+    height: 100%;
+    width: 38%;
+    background: linear-gradient(90deg, #2ec4b5 0%, #1f9e92 100%);
+    box-shadow: 0 0 10px rgba(46, 196, 181, 0.45);
+    animation: route-progress-slide 0.9s ease-in-out infinite;
+  }
+}
+
+@keyframes route-progress-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  50% {
+    transform: translateX(120%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
 }
 </style>

@@ -29,12 +29,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: pindou-project/pindou-server/package-lock.json
+          cache-dependency-path: pindou-server/package-lock.json
       - name: Install deps
-        working-directory: pindou-project/pindou-server
+        working-directory: pindou-server
         run: npm ci
       - name: Init database
-        working-directory: pindou-project/pindou-server
+        working-directory: pindou-server
         run: node scripts/initDb.js
         env:
           DB_HOST: 127.0.0.1
@@ -43,7 +43,7 @@ jobs:
           DB_NAME: pindou
           JWT_SECRET: ci-secret
       - name: Run tests
-        working-directory: pindou-project/pindou-server
+        working-directory: pindou-server
         run: npm test
         env:
           DB_HOST: 127.0.0.1

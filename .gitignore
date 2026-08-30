@@ -17,15 +17,18 @@ dist/
 
 # ===== 运行期上传文件：仅保留目录结构，忽略内容（目录用 .gitkeep 占位） =====
 # 说明：图片按类型分目录存储（avatars/images/patterns/videos），见 pindou-server/utils/upload.js
-pindou-project/pindou-server/public/uploads/**
-!pindou-project/pindou-server/public/uploads/avatars/
-!pindou-project/pindou-server/public/uploads/images/
-!pindou-project/pindou-server/public/uploads/patterns/
-!pindou-project/pindou-server/public/uploads/videos/
-!pindou-project/pindou-server/public/uploads/avatars/.gitkeep
-!pindou-project/pindou-server/public/uploads/images/.gitkeep
-!pindou-project/pindou-server/public/uploads/patterns/.gitkeep
-!pindou-project/pindou-server/public/uploads/videos/.gitkeep
+pindou-server/public/uploads/**
+!pindou-server/public/uploads/avatars/
+!pindou-server/public/uploads/images/
+!pindou-server/public/uploads/patterns/
+!pindou-server/public/uploads/videos/
+!pindou-server/public/uploads/avatars/.gitkeep
+!pindou-server/public/uploads/images/.gitkeep
+!pindou-server/public/uploads/patterns/.gitkeep
+!pindou-server/public/uploads/videos/.gitkeep
+
+# ===== 本地个人文档（面试/总结等，仅本地保留，不上传） =====
+docs/
 
 # ===== 根目录示例图片（开发素材，非运行必需；测试夹具已迁移至 tests/fixtures） =====
 /dwrg.jpg

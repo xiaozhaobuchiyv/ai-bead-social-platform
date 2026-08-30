@@ -83,13 +83,9 @@ const holdFirstFrame = (event) => {
 const fetchDrafts = async () => {
   loading.value = true
   try {
-    console.log('开始获取草稿列表...')
-    console.log('当前 token:', !!localStorage.getItem('token'))
     const res = await draftApi.getDraftList()
-    console.log('草稿列表返回:', res)
     if (res.code === 200) {
       drafts.value = res.list
-      console.log('成功获取草稿，数量:', res.list?.length)
     } else {
       console.warn('获取草稿失败，code:', res.code, 'msg:', res.msg)
     }
@@ -132,7 +128,11 @@ const editDraft = (draft) => {
     title: draft.title,
     content: draft.content,
     images: draft.images,
-    category: draft.category
+    category: draft.category,
+    // 视频草稿编辑时也要带上 video，否则 PublishView 的 fillDraftForm
+    // 读不到视频，导致视频预览不渲染
+    video: draft.video || draft.video_url || draft.videoUrl || '',
+    videoUrl: draft.video || draft.video_url || draft.videoUrl || ''
   }
   localStorage.setItem('editingDraft', JSON.stringify(draftData))
   router.push('/publish')

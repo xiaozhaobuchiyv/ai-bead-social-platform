@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS notes (
   KEY idx_user_id (user_id),
   KEY idx_create_time (create_time),
   KEY idx_user_created (user_id, create_time),
+  -- 搜索索引：FULLTEXT + ngram 解析器（中文分词），供 MATCH ... AGAINST 使用
+  FULLTEXT KEY ft_notes_search (title, content, category) WITH PARSER ngram,
   CONSTRAINT fk_notes_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记表';
 
@@ -139,6 +141,7 @@ CREATE TABLE IF NOT EXISTS messages (
   from_user_id INT NOT NULL COMMENT '发送者ID',
   to_user_id   INT NOT NULL COMMENT '接收者ID',
   content      TEXT NOT NULL COMMENT '消息内容',
+  image        VARCHAR(500) DEFAULT NULL COMMENT '图片URL',
   is_read      INT DEFAULT 0 COMMENT '是否已读 0未读 1已读',
   create_time  DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
   KEY idx_from_to (from_user_id, to_user_id, create_time),
@@ -256,6 +259,23 @@ BEGIN
 END$$
 DELIMITER ;
 
+-- 幂等加 FULLTEXT 索引（中文搜索用 ngram 解析器，老库升级用）
+DROP PROCEDURE IF EXISTS ensure_fulltext_index;
+DELIMITER $$
+CREATE PROCEDURE ensure_fulltext_index(IN tbl VARCHAR(64), IN idx VARCHAR(64), IN cols VARCHAR(255))
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = tbl AND INDEX_NAME = idx
+  ) THEN
+    SET @sql = CONCAT('ALTER TABLE `', tbl, '` ADD FULLTEXT INDEX `', idx, '` (', cols, ') WITH PARSER ngram');
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+  END IF;
+END$$
+DELIMITER ;
+
 -- 存量库升级：视频字段
 CALL ensure_column('notes', 'video', "VARCHAR(500) DEFAULT NULL COMMENT '视频URL'");
 CALL ensure_column('drafts', 'video', "VARCHAR(500) DEFAULT NULL COMMENT '视频URL'");
@@ -263,6 +283,7 @@ CALL ensure_column('drafts', 'category', "VARCHAR(50) DEFAULT '其他' COMMENT '
 CALL ensure_column('comments', 'like_count', "INT DEFAULT 0 COMMENT '点赞数'");
 CALL ensure_column('notes', 'region', "VARCHAR(50) DEFAULT NULL COMMENT 'IP属地'");
 CALL ensure_column('users', 'region', "VARCHAR(50) DEFAULT NULL COMMENT 'IP属地'");
+CALL ensure_column('messages', 'image', "VARCHAR(500) DEFAULT NULL COMMENT '图片URL'");
 
 -- notes：首页瀑布流时间倒序
 CALL ensure_index('notes', 'idx_create_time', 'create_time');
@@ -285,7 +306,11 @@ CALL ensure_index('notices', 'idx_user_read', 'user_id, is_read');
 -- drafts：我的草稿
 CALL ensure_index('drafts', 'idx_user_update', 'user_id, update_time');
 
+-- notes：关键词搜索（标题/内容/分类 中文模糊查询）
+CALL ensure_fulltext_index('notes', 'ft_notes_search', 'title, content, category');
+
 DROP PROCEDURE IF EXISTS ensure_index;
+DROP PROCEDURE IF EXISTS ensure_fulltext_index;
 
 -- =====================================================================
 -- 可选：会话表（当前私信会话由 messages 聚合生成，此表保留兼容）

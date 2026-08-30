@@ -33,10 +33,15 @@ function ensureDir(dir) {
 const randomName = (file) =>
   `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname || '').toLowerCase()}`
 
+/**
+ * multer 的 diskStorage 要求 filename / destination 为回调风格：
+ * (req, file, cb) => cb(err, value)。若传入普通返回式函数（如 randomName），
+ * multer 会一直等待其调用回调，导致上传请求挂起。
+ */
 const makeStorage = (dir) =>
   multer.diskStorage({
     destination: (req, file, cb) => cb(null, dir),
-    filename: randomName,
+    filename: (req, file, cb) => cb(null, randomName(file)),
   })
 
 /** 图片通用白名单：扩展名或 MIME 命中其一即可 */
