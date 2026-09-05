@@ -102,6 +102,10 @@ const imageInput = ref(null)
 const MAX_IMAGE_SIZE_MB = 10
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 
+// AI 可用性：'checking' 探测中 | 'ready' 已配置可聊天 | 'disabled' 未配置/不可用（展示建设中占位）
+const aiState = ref('checking')
+const aiNote = ref('正在检查 AI 服务配置…')
+
 const saveLocalChatHistory = () => {
   localStorage.setItem(getChatHistoryKey(), JSON.stringify(chatList.value))
 }
@@ -298,6 +302,7 @@ const setTaskMode = (mode) => {
 }
 
 const sendMessage = async (mode = selectedTaskMode.value) => {
+  if (aiState.value !== 'ready') return // AI 未配置时不允许发送
   const content = inputValue.value.trim()
   const imageUrls = pendingImageUrls.value
   const imageTaskMode = mode
@@ -541,7 +546,29 @@ const loadHistoryFromServer = async () => {
   }
 }
 
+/** 探测拼小豆是否已配置（后端 /api/ai/status，零成本；未配置则不进入聊天） */
+const getAiStatus = async () => {
+  try {
+    const response = await fetch('/api/ai/status')
+    const result = await response.json().catch(() => null)
+    const cfg = result?.code === 200 ? result?.data : null
+    if (cfg?.configured) {
+      aiState.value = 'ready'
+      aiNote.value = ''
+    } else {
+      aiState.value = 'disabled'
+      aiNote.value = '拼小豆正在建设中，暂未开放，敬请期待~'
+    }
+  } catch (error) {
+    aiState.value = 'disabled'
+    aiNote.value = 'AI 服务暂时无法连接，请稍后再试'
+  }
+}
+
 onMounted(async () => {
+  // 先探测 AI 是否可用；未配置（建设中）则不初始化聊天、不请求历史
+  await getAiStatus()
+  if (aiState.value !== 'ready') return
   // 进入拼小豆即自动定位到聊天最下方（最新消息）
   scrollToBottom()
   await loadHistoryFromServer()
@@ -720,7 +747,19 @@ const publishPatternDesign = (result, style = 'blueprint') => {
 <!-- template 保持不变，已有 imageUrl 显示逻辑 -->
 
 <template>
-  <div class="pine-xiaodou-page">
+  <!-- 拼小豆未配置 / 不可用时：建设中占位页（不渲染聊天，避免触发任何 AI 请求） -->
+  <div v-if="aiState !== 'ready'" class="ai-placeholder">
+    <div class="ai-placeholder-card">
+      <div class="ai-placeholder-icon"><el-icon :size="56"><ChatDotRound /></el-icon></div>
+      <h2>{{ aiState === 'checking' ? '正在检查 AI 服务…' : '拼小豆正在建设中' }}</h2>
+      <p>{{ aiNote }}</p>
+      <div class="ai-placeholder-actions">
+        <button class="back-home-btn" @click="router.push('/')">返回首页</button>
+      </div>
+    </div>
+  </div>
+
+  <div v-else class="pine-xiaodou-page">
     <header class="topbar">
       <div class="brand-block">
         <div class="avatar">豆</div>
@@ -879,6 +918,60 @@ const publishPatternDesign = (result, style = 'blueprint') => {
 </template>
 
 <style scoped>
+.ai-placeholder {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  box-sizing: border-box;
+  background: radial-gradient(circle at top, #f4fffd 0, #eef8f7 35%, #f6f8ff 100%);
+}
+
+.ai-placeholder-card {
+  text-align: center;
+  background: #fff;
+  border: 1px solid #e8f5f2;
+  border-radius: 20px;
+  padding: 48px 56px;
+  box-shadow: 0 12px 40px rgba(46, 196, 181, 0.12);
+  max-width: 420px;
+}
+
+.ai-placeholder-icon {
+  color: #2ec4b5;
+  margin-bottom: 16px;
+}
+
+.ai-placeholder-card h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  color: #2d3436;
+}
+
+.ai-placeholder-card p {
+  margin: 0 0 24px;
+  color: #84939a;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.back-home-btn {
+  padding: 10px 28px;
+  border: none;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #2ec4b5 0%, #20a99e 100%);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.back-home-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(46, 196, 181, 0.35);
+}
+
 .pine-xiaodou-page {
   /* 钉在视口高度：消息区内部滚动，输入栏固定底部，不随消息增长把整页顶下去 */
   height: 100vh;

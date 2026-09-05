@@ -73,6 +73,17 @@ const toVisionContent = async (msg) => {
   return parts
 }
 
+// ==================== AI 可用性状态（拼小豆是否已配置，零成本探测） ====================
+// 用途：前端进入拼小豆页前先探测；未配置 VOLCANO_* 时展示“建设中”占位，不触发任何 AI 请求
+router.get('/status', (req, res) => {
+  const { apiKey, chatModel, visionModel, imageModel } = config.ai
+  const hasKey = !!apiKey
+  const chat = hasKey && !!chatModel
+  const vision = hasKey && !!visionModel
+  const image = hasKey && !!imageModel
+  res.json({ code: 200, data: { configured: chat || vision || image, chat, vision, image } })
+})
+
 // ==================== 历史记录 ====================
 
 router.get('/history', optionalAuth, async (req, res) => {
