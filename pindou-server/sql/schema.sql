@@ -55,6 +55,22 @@ CREATE TABLE IF NOT EXISTS notes (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记表';
 
 -- ---------------------------------------------------------------
+-- 用户反馈 / Bug 上报表
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS feedbacks (
+  id          INT PRIMARY KEY AUTO_INCREMENT COMMENT '反馈ID',
+  user_id     INT          DEFAULT NULL COMMENT '提交用户ID(可为空=匿名)',
+  type        VARCHAR(20)  NOT NULL DEFAULT 'bug' COMMENT '类型: bug/suggestion/other',
+  content     TEXT         NOT NULL COMMENT '反馈内容',
+  contact     VARCHAR(100) DEFAULT NULL COMMENT '联系方式(手机/邮箱/微信，可选)',
+  ip          VARCHAR(45)  DEFAULT NULL COMMENT '提交IP',
+  status      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '处理状态(0待处理/1已处理)',
+  create_time DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '提交时间',
+  KEY idx_fb_created (create_time),
+  KEY idx_fb_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='意见反馈/Bug上报表';
+
+-- ---------------------------------------------------------------
 -- 点赞/收藏动作表
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS actions (

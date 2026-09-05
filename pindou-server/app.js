@@ -66,6 +66,7 @@ app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteT
 // ---------- 业务路由 ----------
 app.use("/api/users", require("./routes/users"));
 app.use("/api/notes", require("./routes/notes"));
+app.use("/api/feedback", require("./routes/feedback"));
 app.use("/api/action", require("./routes/action"));
 app.use("/api/comment", require("./routes/comment"));
 app.use("/api/follow", require("./routes/follow"));

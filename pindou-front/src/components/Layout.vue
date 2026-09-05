@@ -126,6 +126,7 @@ onMounted(() => {
               </div>
             </transition>
           </div>
+          <router-link to="/feedback" class="feedback-link" title="意见反馈 / Bug 上报">Bug反馈</router-link>
         </div>
       </el-header>
       <el-main class="main-view">
@@ -166,12 +167,36 @@ onMounted(() => {
   backdrop-filter: blur(12px);
 
   .header-container {
-    width: min(720px, calc(100vw - 320px));
+    width: min(760px, calc(100vw - 320px));
     overflow: visible;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .search-wrap {
     position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .feedback-link {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 13px;
+    color: #0f766e;
+    border: 1px solid rgba(46, 196, 181, 0.35);
+    border-radius: 999px;
+    padding: 7px 14px;
+    background: rgba(46, 196, 181, 0.06);
+    text-decoration: none;
+    transition: all 0.18s ease;
+
+    &:hover {
+      background: #2ec4b5;
+      color: #fff;
+      transform: translateY(-1px);
+    }
   }
 
   .search-shell {

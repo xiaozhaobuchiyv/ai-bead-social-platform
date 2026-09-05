@@ -103,6 +103,14 @@ export const noteApi = {
   }
 }
 
+// 意见反馈 / Bug 上报接口
+export const feedbackApi = {
+  // 提交反馈
+  submit: (data) => {
+    return request.post('/feedback', data)
+  }
+}
+
 // 操作相关接口
 export const actionApi = {
   // 点赞/收藏切换
