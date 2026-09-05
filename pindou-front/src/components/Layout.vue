@@ -161,41 +161,33 @@ onMounted(() => {
   z-index: 50;
   height: 80px;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  justify-content: center;  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   border-bottom: 1px solid rgba(228, 231, 237, 0.9);
   backdrop-filter: blur(12px);
 
   .header-container {
-    width: min(760px, calc(100vw - 320px));
+    width: min(720px, calc(100vw - 320px));
     overflow: visible;
-    display: flex;
-    align-items: center;
-    gap: 12px;
   }
 
   .search-wrap {
     position: relative;
-    flex: 1;
-    min-width: 0;
   }
 
+  /* 顶部最右：纯文字反馈入口（无按钮背景） */
   .feedback-link {
-    flex-shrink: 0;
-    white-space: nowrap;
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
     font-size: 13px;
     color: #0f766e;
-    border: 1px solid rgba(46, 196, 181, 0.35);
-    border-radius: 999px;
-    padding: 7px 14px;
-    background: rgba(46, 196, 181, 0.06);
     text-decoration: none;
-    transition: all 0.18s ease;
+    padding: 6px 8px;
+    transition: color 0.18s ease;
 
     &:hover {
-      background: #2ec4b5;
-      color: #fff;
-      transform: translateY(-1px);
+      color: #2ec4b5;
     }
   }
 
@@ -377,6 +369,11 @@ onMounted(() => {
   .el-header {
     .header-container {
       width: calc(100vw - 120px);
+    }
+
+    .feedback-link {
+      right: 16px;
+      font-size: 12px;
     }
 
     .history-panel {
