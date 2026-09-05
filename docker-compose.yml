@@ -77,6 +77,9 @@ services:
       context: ./pindou-front
       args:
         VITE_API_BASE: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    environment:
+      # Nginx 网关注入的后端上游（Docker 内网服务名）
+      BACKEND_UPSTREAM: http://pindou-server:3000
     container_name: pindou-front
     restart: unless-stopped
     depends_on:
