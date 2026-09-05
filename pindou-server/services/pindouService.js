@@ -1,12 +1,11 @@
 /**
  * 拼豆图纸服务端转换引擎
  * -------------------------------------------------
- * 管线结构参照开源 bead-pattern-generator（bead_generator.py）的 Node 移植：
+ * 设计要点：
  *   - 颜色量化：按「使用频次」保留前 N 色（默认 0 = 不限色，统一使用 MARD 全色）。
- *   - 无增强类预处理（抖动/降噪/边缘增强/提亮）默认关闭（开源算法本就没有）。
- * 颜色匹配：默认 CIE Lab ΔE 感知距离最近邻（MATCH_USE_LAB=true），
- *   比开源原版 RGB 欧氏距离更贴近人眼与原图观感（平均感知色差改善约 20%）；
- *   如需 1:1 复刻开源 RGB 匹配，把 MATCH_USE_LAB 改为 false。
+ *   - 无增强类预处理（抖动/降噪/边缘增强/提亮），默认全部关闭，保证输出干净可控。
+ *   - 颜色匹配：默认 CIE Lab ΔE 感知距离最近邻（MATCH_USE_LAB=true），更贴近人眼观感；
+ *     切换为 false 则使用 RGB 欧氏距离最近邻。
  * 与前端 src/utils/pindou.js 使用同一套算法，基于 jimp 实现。
  *
  * 用途：
@@ -45,7 +44,7 @@ function rgbToLab(rgb) {
 }
 
 // 匹配度量开关：true = CIE Lab ΔE 感知距离（观感更接近原图，默认）；
-// false = 开源 bead_generator.py 原版 RGB 欧氏距离最近邻（1:1 复刻开源）。
+// false = RGB 欧氏距离最近邻（更快、更“机械”）。
 const MATCH_USE_LAB = true
 
 // 各色号预计算 CIE Lab，避免匹配时重复转换
@@ -54,7 +53,7 @@ for (const [code] of colorCodeMap) {
   colorLabCache.set(code, rgbToLab(colorCodeMap.get(code).rgb))
 }
 
-/** 最近颜色匹配（默认 CIE Lab ΔE；MATCH_USE_LAB=false 时为开源 RGB 欧氏距离） */
+/** 最近颜色匹配（默认 CIE Lab ΔE；MATCH_USE_LAB=false 时为 RGB 欧氏距离） */
 function findNearestColor(rgb) {
   const lab1 = MATCH_USE_LAB ? rgbToLab(rgb) : null
   let minDistance = Infinity
@@ -114,8 +113,8 @@ function applyDithering(data, width, height) {
 }
 
 /**
- * 颜色量化（开源算法：按使用频次保留前 N 色，其余像素归并到最近保留色）
- * 对应 bead_generator.py 中 max_colors 的裁剪逻辑；归并度量与颜色匹配一致（默认 Lab）。
+ * 颜色量化：按使用频次保留前 N 色，其余像素归并到最近保留色
+ * （默认不限色 = MARD 全色；归并度量与颜色匹配一致，默认 Lab）。
  */
 function quantizeColors(pixels, maxColors) {
   if (!maxColors || maxColors <= 0 || maxColors >= pixels.length) return pixels

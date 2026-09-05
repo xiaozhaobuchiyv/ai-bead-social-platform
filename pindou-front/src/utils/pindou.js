@@ -5,10 +5,10 @@
  *   1. 图纸转换页（PindouDesigner.vue）—— 本地图片转拼豆图纸
  *   2. 拼小豆 AI 聊天（PineXiaoDouView.vue）—— AI 生成图 / 用户上传图一键转图纸
  *
- * 算法说明：管线结构移植自开源 bead-pattern-generator（bead_generator.py）。
+ * 算法说明：
  *   - 颜色匹配：默认 CIE Lab ΔE 感知距离最近邻（MATCH_USE_LAB=true，观感更接近原图）；
- *     置为 false 即 1:1 复刻开源 RGB 欧氏距离最近邻。
- *   - 量化：按“使用频次”保留前 N 色（对应开源 max_colors，UI 默认不限色 = MARD 全色）
+ *     置为 false 则使用 RGB 欧氏距离最近邻。
+ *   - 量化：按“使用频次”保留前 N 色（UI 默认不限色 = MARD 全色）
  *   - 抖动：Floyd–Steinberg 误差扩散（引擎保留，UI 默认关闭）
  *   - 预处理：3x3 高斯降噪、Laplacian 边缘增强（引擎保留，UI 默认关闭）
  *   - 相似度：基于 CIE Lab ΔE 的平均相似度（仅作展示指标）
@@ -337,14 +337,14 @@ export function rgbToLab(rgb) {
 }
 
 // 匹配度量开关：true = CIE Lab ΔE 感知距离（观感更接近原图，默认）；
-// false = 开源 bead_generator.py 原版 RGB 欧氏距离最近邻（1:1 复刻开源）。
+// false = RGB 欧氏距离最近邻（更快、更“机械”）。
 const MATCH_USE_LAB = true
 
 // 各色号预计算 CIE Lab，避免匹配时重复转换
 const colorLabCache = new Map(PINDOU_COLORS.map((c) => [c.code, rgbToLab(c.rgb)]))
 
 /**
- * 最近颜色匹配（默认 CIE Lab ΔE 感知距离；MATCH_USE_LAB=false 时为开源 RGB 欧氏距离）
+ * 最近颜色匹配（默认 CIE Lab ΔE 感知距离；MATCH_USE_LAB=false 时为 RGB 欧氏距离）
  */
 export function findNearestColor(rgb) {
   let minDistance = Infinity
@@ -486,8 +486,8 @@ export function applyDithering(ctx, width, height) {
 }
 
 /**
- * 颜色量化（开源算法：按使用频次保留前 N 色，其余像素归并到最近保留色）
- * 对应 bead_generator.py 中 max_colors 的裁剪逻辑；归并度量与颜色匹配一致（默认 Lab）。
+ * 颜色量化：按使用频次保留前 N 色，其余像素归并到最近保留色
+ * （默认不限色 = MARD 全色；归并度量与颜色匹配一致，默认 Lab）。
  */
 export function quantizeColors(pixels, maxColors) {
   if (maxColors === 0 || maxColors >= pixels.length) return pixels
@@ -683,9 +683,9 @@ export function convertImageToPindou(imageSrc, size, options = {}) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} result { gridWidth, gridHeight, pixels }
  * @param {object} [options] { pixelSize, labelSize, style, offsetX, offsetY }
- *   style 'blueprint'（默认，对应开源 generate_pattern_image 的施工图纸 / 格子纸）：
+ *   style 'blueprint'（默认，施工图纸 / 格子纸）：
  *     色块 + 格内色号标注 + 蓝色网格线 + 每 10 格粉色粗分隔线 + 行列编号；
- *   style 'pixel'（对应开源 generate_preview_image）：无缝纯色像素图，无格线无标注。
+ *   style 'pixel'：无缝纯色像素图，无格线无标注。
  */
 function paintPatternGrid(ctx, result, { pixelSize = 18, labelSize = 28, style = 'blueprint', offsetX = 0, offsetY = 0 } = {}) {
   const { gridWidth: width, gridHeight: height, pixels } = result
@@ -701,7 +701,7 @@ function paintPatternGrid(ctx, result, { pixelSize = 18, labelSize = 28, style =
     return
   }
 
-  // ---- 施工图纸（格子纸样式，配色对齐开源：蓝网格 + 每10格粉色粗线 + 行列编号 + 色号）----
+  // ---- 施工图纸（格子纸样式：蓝网格 + 每10格粉色粗线 + 行列编号 + 色号）----
   const startX = offsetX + labelSize
   const startY = offsetY + labelSize
   const right = startX + width * pixelSize
@@ -788,7 +788,7 @@ function paintPatternGrid(ctx, result, { pixelSize = 18, labelSize = 28, style =
  * @param {HTMLCanvasElement} canvas
  * @param {object} result { gridWidth, gridHeight, pixels }
  * @param {object} [options] { pixelSize=18, labelSize=28, style='blueprint'|'pixel' }
- *   - 'blueprint'（默认）：开源施工图纸 / 格子纸样式（蓝网格 + 每10格粉色线 + 色号 + 行列编号）
+ *   - 'blueprint'（默认）：施工图纸 / 格子纸样式（蓝网格 + 每10格粉色线 + 色号 + 行列编号）
  *   - 'pixel'：纯像素图（无格线、无标注），用于“只下载/保存像素图”
  */
 export function drawPatternToCanvas(canvas, result, { pixelSize = 18, labelSize = 28, style = 'blueprint' } = {}) {
@@ -889,7 +889,7 @@ export function downloadDesign(result, { pixelSize = 18, labelSize = 28, style =
   link.click()
 }
 
-/** 下载纯像素图（无格线、无标注；对应开源 generate_preview_image 的成品预览图） */
+/** 下载纯像素图（无格线、无标注） */
 export function downloadPixelOnly(result, { cellSize = 18 } = {}) {
   if (!result) return
   const canvas = document.createElement('canvas')

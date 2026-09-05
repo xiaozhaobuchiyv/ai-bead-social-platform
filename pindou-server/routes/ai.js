@@ -380,7 +380,7 @@ router.post('/chat-with-image', assertAiConfigured, optionalAuth, assertAiAllowe
 router.post('/convert', optionalAuth, async (req, res) => {
   try {
     // 统一 MARD 全色（291 色）：maxColors 默认 0 = 不限色数；
-    // 开源算法不含增强类预处理，因此 edgeEnhance/denoise/brightnessBoost/dithering 默认关闭，仅显式开启才生效。
+    // 不内置增强类预处理，edgeEnhance/denoise/brightnessBoost/dithering 默认关闭，仅显式开启才生效。
     const { imageUrl, dataUrl, gridSize = 52, maxColors = 0, options = {} } = req.body || {}
     if (!imageUrl && !dataUrl) {
       return res.status(400).json({ code: 400, msg: '请提供 imageUrl 或 dataUrl' })
