@@ -66,6 +66,12 @@ const config = {
     chatModel: process.env.VOLCANO_CHAT_MODEL || '',
     visionModel: process.env.VOLCANO_VISION_MODEL || process.env.VOLCANO_IMAGE_CHAT_MODEL || '',
     imageModel: process.env.VOLCANO_IMAGE_MODEL || '',
+    // 白名单（可选）：逗号分隔的用户名或用户ID。空 = 不限制（配了 key 即全员可用）。
+    // 非空 = 仅白名单内账号可调用拼小豆；游客/未授权账号即使配了 key 也视为“建设中/内部功能”。
+    allowedUsers: String(process.env.AI_ALLOWED_USERS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
     // 多轮对话携带的上下文消息条数（条数越多 token 成本越高、首 token 越慢；默认取近期一小段即可）
     contextMessages: parseInt(process.env.AI_CONTEXT_MESSAGES, 10) || 12,
     // 外部依赖调用超时

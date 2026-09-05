@@ -38,6 +38,28 @@ const assertAiConfigured = (req, res, next) => {
   next()
 }
 
+// ---- 拼小豆访问白名单（AI_ALLOWED_USERS：逗号分隔的用户名或用户ID） ----
+// 白名单为空：不限（配 key 即开放）；非空：仅白名单账号可用（游客/他人返回 403）
+const isAiAllowedUser = (user) => {
+  const list = config.ai.allowedUsers
+  if (!list.length) return true // 未配置白名单 = 不限
+  if (!user) return false
+  const name = String(user.username || '')
+  const id = user.id != null ? String(user.id) : ''
+  return list.some((token) => token === name || token === id)
+}
+
+const aiAccessGated = () => config.ai.allowedUsers.length > 0
+
+// 需登录的模型调用路由守卫：白名单开启且当前用户不在名单内时拒绝（避免绕过前端直接调用产生费用）
+const assertAiAllowed = (req, res, next) => {
+  if (isAiAllowedUser(req.user)) return next()
+  return res.status(403).json({
+    code: 403,
+    msg: aiAccessGated() && !req.user ? '拼小豆为内部功能，请先登录后使用' : '该账号暂未开通拼小豆使用权限',
+  })
+}
+
 const normalizeClientMessage = (item) => ({
   role: item?.role || 'assistant',
   content: item?.content || '',
@@ -73,15 +95,29 @@ const toVisionContent = async (msg) => {
   return parts
 }
 
-// ==================== AI 可用性状态（拼小豆是否已配置，零成本探测） ====================
-// 用途：前端进入拼小豆页前先探测；未配置 VOLCANO_* 时展示“建设中”占位，不触发任何 AI 请求
-router.get('/status', (req, res) => {
+// ==================== AI 可用性状态（拼小豆是否可用，零成本探测） ====================
+// 返回对“当前请求用户”是否可用：key 未配置 → 建设中；配置了但开启白名单且用户不在名单 → 内部功能/建设中
+router.get('/status', optionalAuth, (req, res) => {
   const { apiKey, chatModel, visionModel, imageModel } = config.ai
   const hasKey = !!apiKey
   const chat = hasKey && !!chatModel
   const vision = hasKey && !!visionModel
   const image = hasKey && !!imageModel
-  res.json({ code: 200, data: { configured: chat || vision || image, chat, vision, image } })
+  const keyConfigured = chat || vision || image
+  const user = req.user || null
+  const gated = aiAccessGated()
+  const allowed = keyConfigured && isAiAllowedUser(user)
+  res.json({
+    code: 200,
+    data: {
+      configured: allowed, // 对当前用户是否可用（前端据此显示聊天或“建设中”占位）
+      chat,
+      vision,
+      image,
+      gated, // 是否开启了白名单
+      user: user ? String(user.username || user.id || '') : null,
+    },
+  })
 })
 
 // ==================== 历史记录 ====================
@@ -140,7 +176,7 @@ router.post('/history/clear', optionalAuth, async (req, res) => {
 
 // ==================== 对话（文生文） ====================
 
-router.post('/chat', assertAiConfigured, optionalAuth, validate({ prompt: 'maxLen:1000' }), async (req, res) => {
+router.post('/chat', assertAiConfigured, optionalAuth, assertAiAllowed, validate({ prompt: 'maxLen:1000' }), async (req, res) => {
   const { messages, prompt, mode } = req.body || {}
 
   let userInput = prompt
@@ -224,7 +260,7 @@ router.post('/chat', assertAiConfigured, optionalAuth, validate({ prompt: 'maxLe
 
 // ==================== 带图对话（分析 / 图生图） ====================
 
-router.post('/chat-with-image', assertAiConfigured, optionalAuth, async (req, res) => {
+router.post('/chat-with-image', assertAiConfigured, optionalAuth, assertAiAllowed, async (req, res) => {
   const { images, prompt, mode, messages } = req.body || {}
   if (!prompt && (!images || images.length === 0)) {
     return res.status(400).json({ code: 400, msg: '请输入聊天内容或上传图片' })

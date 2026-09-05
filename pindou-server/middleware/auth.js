@@ -29,13 +29,13 @@ function requireAuth(req, res, next) {
   if (!user) {
     return res.status(401).json({ code: 401, msg: '请先登录' })
   }
-  req.user = { id: user.id }
+  req.user = { id: user.id, username: user.username ?? null }
   next()
 }
 
 function optionalAuth(req, res, next) {
   const user = resolveUser(req)
-  req.user = user ? { id: user.id } : null
+  req.user = user ? { id: user.id, username: user.username ?? null } : null
   next()
 }
 

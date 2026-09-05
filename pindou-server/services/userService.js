@@ -28,7 +28,7 @@ async function login(username, password, region = null) {
       [result.insertId]
     )
     const user = newUser[0]
-    const token = signToken(user.id)
+    const token = signToken(user.id, user.username)
     return { token, user, isNew: true }
   }
 
@@ -36,13 +36,15 @@ async function login(username, password, region = null) {
   if (!bcrypt.compareSync(password, user.password)) {
     throw new HttpError(400, '密码错误')
   }
-  const token = signToken(user.id)
+  const token = signToken(user.id, user.username)
   const safeUser = stripPassword(user)
   return { token, user: safeUser, isNew: false }
 }
 
-function signToken(userId) {
-  return jwt.sign({ id: userId }, config.jwt.secret, { expiresIn: config.jwt.expiresIn })
+function signToken(userId, username) {
+  const payload = { id: userId }
+  if (username) payload.username = username // 供拼小豆白名单(AI_ALLOWED_USERS)按用户名匹配
+  return jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn })
 }
 
 function stripPassword(user) {

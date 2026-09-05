@@ -105,6 +105,7 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp
 // AI 可用性：'checking' 探测中 | 'ready' 已配置可聊天 | 'disabled' 未配置/不可用（展示建设中占位）
 const aiState = ref('checking')
 const aiNote = ref('正在检查 AI 服务配置…')
+const aiShowLogin = ref(false) // 白名单开启且未登录时，展示“去登录”按钮
 
 const saveLocalChatHistory = () => {
   localStorage.setItem(getChatHistoryKey(), JSON.stringify(chatList.value))
@@ -546,27 +547,52 @@ const loadHistoryFromServer = async () => {
   }
 }
 
-/** 探测拼小豆是否已配置（后端 /api/ai/status，零成本；未配置则不进入聊天） */
+/** 探测拼小豆是否可用（后端 /api/ai/status，零成本；携带登录态以便白名单判断） */
 const getAiStatus = async () => {
+  const token = getAuthToken()
   try {
-    const response = await fetch('/api/ai/status')
+    const response = await fetch('/api/ai/status', {
+      headers: token ? { token } : {},
+    })
     const result = await response.json().catch(() => null)
     const cfg = result?.code === 200 ? result?.data : null
     if (cfg?.configured) {
       aiState.value = 'ready'
       aiNote.value = ''
+      aiShowLogin.value = false
     } else {
       aiState.value = 'disabled'
-      aiNote.value = '拼小豆正在建设中，暂未开放，敬请期待~'
+      aiShowLogin.value = !!(cfg?.gated && !cfg?.user)
+      if (cfg?.gated && !cfg?.user) {
+        aiNote.value = '拼小豆为内部功能，请登录后使用'
+      } else if (cfg?.gated && cfg?.user) {
+        aiNote.value = '该账号暂未开通拼小豆使用权限'
+      } else {
+        aiNote.value = '拼小豆正在建设中，暂未开放，敬请期待~'
+      }
     }
   } catch (error) {
     aiState.value = 'disabled'
+    aiShowLogin.value = false
     aiNote.value = 'AI 服务暂时无法连接，请稍后再试'
   }
 }
 
+/** 打开登录弹窗（登录成功后重新探测，若已获白名单权限则自动进入聊天） */
+const openLoginModal = () => {
+  window.dispatchEvent(new Event('showLoginModal'))
+}
+
+const onLoginSuccess = async () => {
+  await getAiStatus()
+  if (aiState.value !== 'ready') return
+  await loadHistoryFromServer()
+  scrollToBottom()
+}
+
 onMounted(async () => {
-  // 先探测 AI 是否可用；未配置（建设中）则不初始化聊天、不请求历史
+  window.addEventListener('loginSuccess', onLoginSuccess)
+  // 先探测 AI 是否可用；不可用（建设中/内部功能）则不初始化聊天、不请求历史
   await getAiStatus()
   if (aiState.value !== 'ready') return
   // 进入拼小豆即自动定位到聊天最下方（最新消息）
@@ -578,6 +604,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('userInfoUpdated', loadHistoryFromServer)
+  window.removeEventListener('loginSuccess', onLoginSuccess)
   stopTypeTimer()
 })
 
@@ -751,9 +778,10 @@ const publishPatternDesign = (result, style = 'blueprint') => {
   <div v-if="aiState !== 'ready'" class="ai-placeholder">
     <div class="ai-placeholder-card">
       <div class="ai-placeholder-icon"><el-icon :size="56"><ChatDotRound /></el-icon></div>
-      <h2>{{ aiState === 'checking' ? '正在检查 AI 服务…' : '拼小豆正在建设中' }}</h2>
+      <h2>{{ aiState === 'checking' ? '正在检查 AI 服务…' : aiShowLogin ? '拼小豆为内部功能' : '拼小豆正在建设中' }}</h2>
       <p>{{ aiNote }}</p>
       <div class="ai-placeholder-actions">
+        <button v-if="aiShowLogin" class="login-btn" @click="openLoginModal">登录后使用</button>
         <button class="back-home-btn" @click="router.push('/')">返回首页</button>
       </div>
     </div>
@@ -956,20 +984,42 @@ const publishPatternDesign = (result, style = 'blueprint') => {
   line-height: 1.6;
 }
 
-.back-home-btn {
+.ai-placeholder-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.back-home-btn,
+.login-btn {
   padding: 10px 28px;
   border: none;
   border-radius: 22px;
-  background: linear-gradient(135deg, #2ec4b5 0%, #20a99e 100%);
-  color: #fff;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.25s;
 }
 
+.back-home-btn {
+  background: linear-gradient(135deg, #2ec4b5 0%, #20a99e 100%);
+  color: #fff;
+}
+
 .back-home-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(46, 196, 181, 0.35);
+}
+
+.login-btn {
+  background: #fff;
+  color: #2ec4b5;
+  border: 1px solid #2ec4b5;
+}
+
+.login-btn:hover {
+  background: #eefbf8;
+  transform: translateY(-2px);
 }
 
 .pine-xiaodou-page {
