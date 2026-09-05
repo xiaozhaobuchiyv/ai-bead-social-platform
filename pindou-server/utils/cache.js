@@ -162,7 +162,6 @@ function createRedisClient() {
   const options = {
     host: rc.host,
     port: rc.port,
-    db: rc.db,
     // 快速失败：连接断开时命令立即报错而非排队，交由业务层降级
     enableOfflineQueue: false,
     maxRetriesPerRequest: 1,
@@ -170,10 +169,14 @@ function createRedisClient() {
     lazyConnect: false,
   }
   if (rc.password) options.password = rc.password
+  if (!rc.url && rc.tls) options.tls = {}
   if (rc.url) {
-    // 支持 REDIS_URL 形式（redis://:pass@host:port/db）
+    // 支持 REDIS_URL / rediss:// URL 形式（托管 Redis 如 Upstash 用 rediss:// 走 TLS）
+    // 使用 URL 时不覆盖 db：托管服务通常只允许 0 号库，由 URL/服务端决定
     return new Redis(rc.url, { ...options, url: undefined })
   }
+  // 直连方式（host/port）才指定 db（默认 1，内存/自建 Redis 使用）
+  options.db = rc.db
   return new Redis(options)
 }
 

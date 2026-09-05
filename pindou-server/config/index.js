@@ -3,6 +3,7 @@
  * 启动时校验必需环境变量，统一提供应用配置出口。
  */
 require('dotenv').config()
+const fs = require('fs')
 
 const requiredEnv = ['JWT_SECRET']
 const missing = requiredEnv.filter((key) => !process.env[key])
@@ -13,6 +14,15 @@ if (missing.length > 0) {
   }
 }
 
+// DB_SSL 解析：默认关闭；require/true 开启（可选 DB_SSL_CA 校验证书）
+function buildDbSsl() {
+  const mode = String(process.env.DB_SSL || '').toLowerCase()
+  if (!mode || mode === '0' || mode === 'false' || mode === 'disable') return undefined
+  const caFile = process.env.DB_SSL_CA
+  if (caFile && fs.existsSync(caFile)) return { ca: fs.readFileSync(caFile) }
+  return { rejectUnauthorized: false }
+}
+
 const config = {
   env: process.env.NODE_ENV || 'development',
   isProd: process.env.NODE_ENV === 'production',
@@ -21,6 +31,7 @@ const config = {
 
   db: {
     host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT, 10) || 3306,
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '123456',
     database: process.env.DB_NAME || 'pindou',
@@ -29,6 +40,10 @@ const config = {
     connectionLimit: parseInt(process.env.DB_POOL_SIZE, 10) || 10,
     waitForConnections: true,
     queueLimit: 0,
+    // 托管 MySQL（Aiven 等）通常为非 3306 端口并强制 TLS：
+    //   DB_SSL=require                —— 开启 TLS（跳过证书校验，通用）
+    //   DB_SSL=require + DB_SSL_CA=路径 —— 校验证书（Aiven 建议下载 ca.pem 后填绝对路径）
+    ssl: buildDbSsl(),
   },
 
   jwt: {
@@ -55,8 +70,11 @@ const config = {
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT, 10) || 6379,
       password: process.env.REDIS_PASSWORD || '',
-      // 使用独立 DB（默认 1），clear 时 flushdb 只清缓存库，不碰业务数据
+      // 使用独立 DB（默认 1），clear 时 flushdb 只清缓存库，不碰业务数据；
+      // 托管 Redis（Upstash 等）通常只允许 db=0，请设 REDIS_DB=0 并优先用 rediss:// URL
       db: parseInt(process.env.REDIS_DB, 10) || 1,
+      // 以 host/port 方式直连且服务要求 TLS 时设 REDIS_TLS=1（用 rediss:// URL 则无需设置）
+      tls: ['1', 'true', 'yes'].includes(String(process.env.REDIS_TLS || '').toLowerCase()),
     },
   },
 

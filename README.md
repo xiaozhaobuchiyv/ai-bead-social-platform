@@ -78,6 +78,8 @@ docker compose up -d --build
 
 - 后端 `pindou-server/.env`（模板见 `.env.example`）：
   - `DB_*` / `JWT_SECRET` / `CACHE_DRIVER`(memory|redis) / `REDIS_*` / `CORS_ORIGIN` / `PUBLIC_BASE_URL` / `MAX_UPLOAD_SIZE_MB`
+  - 托管 MySQL（Aiven 等）：补 `DB_PORT`（非 3306）+ `DB_SSL=require`（可加 `DB_SSL_CA=证书路径` 校验证书）
+  - 托管 Redis（Upstash 等）：`CACHE_DRIVER=redis` + `REDIS_URL=rediss://…`（自动 TLS）+ `REDIS_DB=0`
   - 拼小豆 AI（**不配置即整站关闭**，前端进入显示“建设中”）：
     - `VOLCANO_ARC_API_KEY`、`VOLCANO_CHAT_MODEL`、`VOLCANO_IMAGE_MODEL`、`VOLCANO_VISION_MODEL`
     - `AI_ALLOWED_USERS`：逗号分隔的**用户名(手机号)或用户ID**，配置后仅白名单账号可用，其余人显示“内部功能”且接口直接 403

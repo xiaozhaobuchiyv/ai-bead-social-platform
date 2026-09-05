@@ -50,6 +50,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       DB_HOST: mysql
+      DB_PORT: ${DB_PORT:-3306}
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD:-123456}
       DB_NAME: pindou
@@ -64,6 +65,7 @@ services:
       VOLCANO_CHAT_MODEL: ${VOLCANO_CHAT_MODEL:-}
       VOLCANO_IMAGE_MODEL: ${VOLCANO_IMAGE_MODEL:-}
       VOLCANO_VISION_MODEL: ${VOLCANO_VISION_MODEL:-}
+      AI_ALLOWED_USERS: ${AI_ALLOWED_USERS:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
     volumes:
       - server-uploads:/app/public/uploads

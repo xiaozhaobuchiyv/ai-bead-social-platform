@@ -73,9 +73,11 @@ async function main() {
 
   const conn = await mysql.createConnection({
     host: config.db.host,
+    port: config.db.port,
     user: config.db.user,
     password: config.db.password,
     charset: 'utf8mb4',
+    ssl: config.db.ssl,
   })
 
   console.log(`[db:init] 连接 ${config.db.host}，执行 ${statements.length} 条语句...`)
