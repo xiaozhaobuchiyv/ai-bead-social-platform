@@ -715,17 +715,23 @@ function paintPatternGrid(ctx, result, { pixelSize = 18, labelSize = 28, style =
     ctx.fillRect(x, y, pixelSize, pixelSize)
   })
 
-  // 格内色号标注（格子足够大时）
-  if (pixelSize >= 12) {
-    ctx.font = `bold ${Math.max(8, Math.round(pixelSize * 0.5))}px Arial`
+  // 格内色号标注：所有格子都标注色号，文字自动缩小以适应格子宽度（不再跳过任何格子）
+  if (pixelSize >= 8) {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
+    const maxTextWidth = pixelSize - 3
     pixels.forEach((pixel, index) => {
       const label = pixel.label || pixel.name || ''
       if (!label) return
-      if (ctx.measureText(label).width > pixelSize - 3) return
       const x = (index % width) * pixelSize + startX
       const y = Math.floor(index / width) * pixelSize + startY
+      // 从尽量大的字号起逐级缩小，直到能放进格子（保底 5px，保证每个格子都有标注）
+      let fontSize = Math.max(9, Math.round(pixelSize * 0.5))
+      ctx.font = `bold ${fontSize}px Arial`
+      while (fontSize > 5 && ctx.measureText(label).width > maxTextWidth) {
+        fontSize -= 1
+        ctx.font = `bold ${fontSize}px Arial`
+      }
       const brightness = getBrightness(pixel.color)
       ctx.fillStyle = brightness > 128 ? '#333333' : '#ffffff'
       ctx.fillText(label, x + pixelSize / 2, y + pixelSize / 2)
