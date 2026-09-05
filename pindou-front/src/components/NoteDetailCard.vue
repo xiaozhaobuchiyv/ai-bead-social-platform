@@ -556,21 +556,10 @@ const editNote = () => {
 // 是否处于隐藏状态（1=仅自己可见）
 const isNoteHidden = () => normalizeBoolean(note.value?.is_hidden)
 
-// 隐藏 / 取消隐藏（抖音式：他人不可见，自己仍可在“我的笔记”查看并取消）
+// 隐藏 / 取消隐藏（抖音式：他人不可见，自己仍可在“我的笔记”查看并取消；点击即生效，无需二次确认）
 const toggleHidden = async () => {
   if (!note.value) return
   const willHide = !isNoteHidden()
-  if (willHide) {
-    try {
-      await ElMessageBox.confirm(
-        '隐藏后其他用户将看不到这条作品，你自己仍可在「我的笔记」中查看并随时取消隐藏。确定隐藏吗？',
-        '隐藏作品',
-        { type: 'warning' }
-      )
-    } catch {
-      return
-    }
-  }
   try {
     const res = willHide ? await noteApi.hideNote(note.value.id) : await noteApi.unhideNote(note.value.id)
     if (res.code === 200) {
