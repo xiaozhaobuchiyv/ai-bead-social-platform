@@ -13,7 +13,8 @@ const app = require('../app')
 let server
 let baseUrl
 
-const TEST_USER = `it_${Date.now()}`
+// 测试用户：使用 11 位手机号（系统账号限制为手机号）
+const TEST_USER = `139${String(Date.now()).slice(-8)}`
 
 before(async () => {
   server = app.listen(0)

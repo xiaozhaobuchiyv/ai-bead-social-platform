@@ -18,6 +18,9 @@ const form = reactive({
 const checked = ref(false)
 const loading = ref(false)
 
+// 账号仅允许大陆手机号：1 开头，第二位 3-9，共 11 位（与后端保持一致）
+const PHONE_REG = /^1[3-9]\d{9}$/
+
 // 弹窗提示状态
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -42,8 +45,12 @@ const showToastMessage = (msg, type = 'error') => {
 // 提交登录
 const submitForm = async () => {
   // 校验空值
-  if (!form.username) {
-    showToastMessage('请输入账号')
+  if (!form.username.trim()) {
+    showToastMessage('请输入手机号')
+    return
+  }
+  if (!PHONE_REG.test(form.username.trim())) {
+    showToastMessage('账号需为 11 位手机号（1 开头，第二位 3-9）')
     return
   }
   if (!form.password) {
@@ -60,7 +67,7 @@ const submitForm = async () => {
   loading.value = true
   try {
     const res = await userApi.login({
-      username: form.username,
+      username: form.username.trim(),
       password: form.password
     })
 
@@ -107,10 +114,10 @@ const submitForm = async () => {
       </div>
       <div class="card-right" style="width: 50%;">
         <div class="close-btn" @click="emit('close')"><el-icon :size="16"><Close /></el-icon></div>
-        <h2 class="title">账号登录</h2>
+        <h2 class="title">手机号登录</h2>
         <el-form :model="form" class="login-form">
           <el-form-item>
-            <el-input v-model="form.username" placeholder="输入账号" class="login-input" size="large" />
+            <el-input v-model="form.username" placeholder="输入11位手机号" class="login-input" size="large" maxlength="11" />
           </el-form-item>
           <el-form-item>
             <el-input v-model="form.password" type="password" placeholder="输入密码" class="login-input" size="large"
@@ -128,7 +135,7 @@ const submitForm = async () => {
             </el-checkbox>
           </el-form-item>
         </el-form>
-        <p class="new-user">新用户可直接登录</p>
+        <p class="new-user">未注册的手机号登录后自动创建账号</p>
       </div>
     </div>
   </div>

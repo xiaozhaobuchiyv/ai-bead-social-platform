@@ -10,22 +10,35 @@ const { cache } = require('../utils/cache')
 
 const PUBLIC_FIELDS = 'id, username, nickname, avatar, signature, mobile, region, create_time'
 
+// 账号仅允许大陆手机号：1 开头，第二位 3-9，共 11 位（前后端保持一致）
+const PHONE_REG = /^1[3-9]\d{9}$/
+
 /** 登录（不存在自动注册） */
 async function login(username, password, region = null) {
-  if (!username?.trim()) throw new HttpError(400, '用户名不能为空')
+  const name = String(username ?? '').trim()
+  if (!name) throw new HttpError(400, '请输入手机号')
+  if (!PHONE_REG.test(name)) throw new HttpError(400, '账号需为 11 位手机号（1 开头，第二位 3-9）')
   if (!password) throw new HttpError(400, '密码不能为空')
 
-  const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username.trim()])
+  const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [name])
 
   if (!rows.length) {
     const hash = bcrypt.hashSync(password, 10)
-    const [result] = await pool.query(
-      'INSERT INTO users(username, password, region) VALUES(?, ?, ?)',
-      [username.trim(), hash, region]
-    )
+    let insertId
+    try {
+      const [result] = await pool.query(
+        'INSERT INTO users(username, password, region) VALUES(?, ?, ?)',
+        [name, hash, region]
+      )
+      insertId = result.insertId
+    } catch (error) {
+      // 数据库唯一索引兜底：并发下重复注册同一手机号
+      if (error?.code === 'ER_DUP_ENTRY') throw new HttpError(400, '该手机号已注册，请直接登录')
+      throw error
+    }
     const [newUser] = await pool.query(
       `SELECT ${PUBLIC_FIELDS} FROM users WHERE id = ?`,
-      [result.insertId]
+      [insertId]
     )
     const user = newUser[0]
     const token = signToken(user.id, user.username)
