@@ -553,6 +553,38 @@ const editNote = () => {
   close()
 }
 
+// 是否处于隐藏状态（1=仅自己可见）
+const isNoteHidden = () => normalizeBoolean(note.value?.is_hidden)
+
+// 隐藏 / 取消隐藏（抖音式：他人不可见，自己仍可在“我的笔记”查看并取消）
+const toggleHidden = async () => {
+  if (!note.value) return
+  const willHide = !isNoteHidden()
+  if (willHide) {
+    try {
+      await ElMessageBox.confirm(
+        '隐藏后其他用户将看不到这条作品，你自己仍可在「我的笔记」中查看并随时取消隐藏。确定隐藏吗？',
+        '隐藏作品',
+        { type: 'warning' }
+      )
+    } catch {
+      return
+    }
+  }
+  try {
+    const res = willHide ? await noteApi.hideNote(note.value.id) : await noteApi.unhideNote(note.value.id)
+    if (res.code === 200) {
+      note.value.is_hidden = willHide ? 1 : 0
+      ElMessage.success(willHide ? '已隐藏，仅自己可见' : '已取消隐藏，所有人可见')
+    } else {
+      ElMessage.error(res.msg || (willHide ? '隐藏失败' : '取消隐藏失败'))
+    }
+  } catch (error) {
+    console.error('切换隐藏状态失败:', error)
+    ElMessage.error('操作失败，请稍后重试')
+  }
+}
+
 // 评论
 const submitComment = async () => {
   if (!commentInput.value.trim()) return
@@ -858,9 +890,11 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
                 <span class="author-name">{{ note.nickname || '用户' }}</span>
                 <span class="author-time">{{ formatTime(note.create_time) }}<template v-if="note.region"> · {{ note.region }}</template></span>
                 <span v-if="isAuthorFollowed" class="follow-badge">已关注</span>
+                <span v-if="isOwnNote && isNoteHidden()" class="hidden-badge">已隐藏 · 仅自己可见</span>
               </div>
-              <!-- 自己的笔记：编辑/删除 -->
+              <!-- 自己的笔记：隐藏/编辑/删除 -->
               <template v-if="isOwnNote">
+                <button class="own-action hide" :class="{ 'hidden-state': isNoteHidden() }" @click="toggleHidden">{{ isNoteHidden() ? '取消隐藏' : '隐藏' }}</button>
                 <button class="own-action edit" @click="editNote">编辑</button>
                 <button class="own-action delete" @click="deleteNote">删除</button>
               </template>
@@ -1346,6 +1380,19 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
   font-size: 10px;
   color: #2ec4b5;
   background: rgba(46, 196, 181, 0.12);
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.hidden-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #b58500;
+  background: rgba(181, 133, 0, 0.12);
   padding: 1px 6px;
   border-radius: 999px;
   font-weight: 600;
@@ -2125,6 +2172,8 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
 
   &:hover { color: #2ec4b5; }
   &.delete:hover { color: #ff6b6b; }
+  &.hide:hover { color: #b58500; }
+  &.hide.hidden-state { color: #b58500; font-weight: 600; }
 }
 
 /* 评论「作者」标签 */

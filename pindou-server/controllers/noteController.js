@@ -138,6 +138,17 @@ const remove = asyncHandler(async (req, res) => {
   ok(res, null, '删除成功')
 })
 
+// ---------- 隐藏 / 取消隐藏（仅作者本人；隐藏后他人不可见，自己仍可见） ----------
+const hide = asyncHandler(async (req, res) => {
+  await noteService.setHidden(req.params.id, req.user.id, true)
+  ok(res, null, '已隐藏，仅自己可见')
+})
+
+const unhide = asyncHandler(async (req, res) => {
+  await noteService.setHidden(req.params.id, req.user.id, false)
+  ok(res, null, '已取消隐藏')
+})
+
 // ---------- 更新 ----------
 const update = (req, res, next) => {
   imageUpload.array('images', 9)(req, res, async (err) => {
@@ -162,4 +173,4 @@ const update = (req, res, next) => {
   })
 }
 
-module.exports = { getFeed, getSearch, getDetail, getByCategory, getMine, getByAuthor, publish, remove, update, uploadVideo }
+module.exports = { getFeed, getSearch, getDetail, getByCategory, getMine, getByAuthor, publish, remove, hide, unhide, update, uploadVideo }

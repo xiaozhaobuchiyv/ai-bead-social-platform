@@ -11,7 +11,7 @@ const { parseCursor, buildCursor } = require('../utils/pagination')
 
 const NOTE_SELECT = `
   SELECT n.id, n.title, n.content, n.images, n.video, n.user_id, n.category,
-         n.likes, n.collects, n.region, n.create_time,
+         n.likes, n.collects, n.region, n.create_time, n.is_hidden,
          COUNT(c.id) AS comment_count,
          u.nickname, u.avatar
   FROM notes n
@@ -19,7 +19,7 @@ const NOTE_SELECT = `
   LEFT JOIN comments c ON c.note_id = n.id
 `
 
-const GROUP_BY = 'GROUP BY n.id, n.title, n.content, n.images, n.video, n.user_id, n.category, n.likes, n.collects, n.region, n.create_time, u.nickname, u.avatar'
+const GROUP_BY = 'GROUP BY n.id, n.title, n.content, n.images, n.video, n.user_id, n.category, n.likes, n.collects, n.region, n.create_time, n.is_hidden, u.nickname, u.avatar'
 
 const normalizeNote = (note) => ({
   ...note,
@@ -68,17 +68,17 @@ async function listFeed({ cursor, pageSize = 10, userId = null } = {}) {
   }
 
   const params = []
-  let where = ''
+  const conditions = ['n.is_hidden = 0'] // 隐藏的作品对所有人（含作者）都不出现在首页 Feed
   if (cursorDateTime && cursorId) {
-    where = 'WHERE (n.create_time < ? OR (n.create_time = ? AND n.id < ?))'
+    conditions.push('(n.create_time < ? OR (n.create_time = ? AND n.id < ?))')
     params.push(cursorDateTime, cursorDateTime, cursorId)
   } else if (cursorId) {
-    where = 'WHERE n.id < ?'
+    conditions.push('n.id < ?')
     params.push(cursorId)
   }
 
   const [rows] = await pool.query(
-    `${NOTE_SELECT} ${where} ${GROUP_BY} ORDER BY n.create_time DESC, n.id DESC LIMIT ?`,
+    `${NOTE_SELECT} WHERE ${conditions.join(' AND ')} ${GROUP_BY} ORDER BY n.create_time DESC, n.id DESC LIMIT ?`,
     [...params, pageSize + 1] // 多取一条判断是否还有下一页
   )
 
@@ -96,26 +96,34 @@ async function listFeed({ cursor, pageSize = 10, userId = null } = {}) {
   return result
 }
 
-/** 笔记详情 */
+/** 笔记详情（隐藏的笔记仅作者本人可见，其他人视为不存在） */
 async function getDetail(noteId, userId = null) {
   const [rows] = await pool.query(
     `${NOTE_SELECT} WHERE n.id = ? ${GROUP_BY}`,
     [noteId]
   )
   if (!rows.length) throw new HttpError(404, '笔记不存在')
-  const detail = normalizeNote(rows[0])
-  const { liked, collected } = await getUserActionSets(userId, [detail.id])
-  return { ...detail, liked: liked.has(detail.id), collected: collected.has(detail.id) }
+  const detail = rows[0]
+  const hidden = Number(detail.is_hidden) === 1
+  if (hidden && (userId == null || String(userId) !== String(detail.user_id))) {
+    throw new HttpError(404, '笔记不存在或已隐藏')
+  }
+  const normalized = normalizeNote(detail)
+  const { liked, collected } = await getUserActionSets(userId, [normalized.id])
+  return { ...normalized, liked: liked.has(normalized.id), collected: collected.has(normalized.id) }
 }
 
-/** 分类浏览（分页） */
+/** 分类浏览（分页，隐藏作品不展示） */
 async function listByCategory(category, { page = 1, pageSize = 10, userId = null } = {}) {
   const offset = (page - 1) * pageSize
   const [rows] = await pool.query(
-    `${NOTE_SELECT} WHERE n.category = ? ${GROUP_BY} ORDER BY n.create_time DESC, n.id DESC LIMIT ? OFFSET ?`,
+    `${NOTE_SELECT} WHERE n.category = ? AND n.is_hidden = 0 ${GROUP_BY} ORDER BY n.create_time DESC, n.id DESC LIMIT ? OFFSET ?`,
     [category, pageSize, offset]
   )
-  const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM notes WHERE category = ?', [category])
+  const [[{ total }]] = await pool.query(
+    'SELECT COUNT(*) AS total FROM notes WHERE category = ? AND is_hidden = 0',
+    [category]
+  )
   const { liked, collected } = await getUserActionSets(userId, rows.map((r) => r.id))
   return {
     list: applyActionFlags(rows.map(normalizeNote), liked, collected),
@@ -145,7 +153,7 @@ async function searchNotes({ keyword, cursor, pageSize = 10, userId = null } = {
     .join(' ')
 
   const params = []
-  const conditions = []
+  const conditions = ['n.is_hidden = 0'] // 搜索结果不展示隐藏作品
 
   // ngram 默认分词长度为 2，过短关键词用全文索引命中不了，回退 LIKE（全表扫，但量小）
   const useFulltext = booleanQuery.length > 0 && kw.length >= 2
@@ -181,14 +189,23 @@ async function searchNotes({ keyword, cursor, pageSize = 10, userId = null } = {
   }
 }
 
-/** 我的笔记 / 作者笔记（分页） */
+/**
+ * 我的笔记 / 作者笔记（分页）
+ * 本人查看（mynote）包含隐藏作品；他人查看作者页只展示未隐藏作品
+ */
 async function listByUser(ownerId, { page = 1, pageSize = 10, userId = null } = {}) {
   const offset = (page - 1) * pageSize
+  const isSelf = userId != null && String(ownerId) === String(userId)
+  const hiddenCond = isSelf ? '' : 'AND n.is_hidden = 0 '
+  const hiddenCondTotal = isSelf ? '' : 'AND is_hidden = 0 '
   const [rows] = await pool.query(
-    `${NOTE_SELECT} WHERE n.user_id = ? ${GROUP_BY} ORDER BY n.create_time DESC, n.id DESC LIMIT ? OFFSET ?`,
+    `${NOTE_SELECT} WHERE n.user_id = ? ${hiddenCond}${GROUP_BY} ORDER BY n.create_time DESC, n.id DESC LIMIT ? OFFSET ?`,
     [ownerId, pageSize, offset]
   )
-  const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM notes WHERE user_id = ?', [ownerId])
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM notes WHERE user_id = ? ${hiddenCondTotal}`,
+    [ownerId]
+  )
   const { liked, collected } = await getUserActionSets(userId, rows.map((r) => r.id))
   return {
     list: applyActionFlags(rows.map(normalizeNote), liked, collected),
@@ -223,6 +240,16 @@ async function update(noteId, userId, { title, content, category, imagesJson, vi
   await cache.delByPrefix('feed:v1:')
 }
 
+/** 隐藏 / 取消隐藏笔记（仅作者本人）：隐藏后对其他用户不可见，自己仍可在“我的笔记”查看 */
+async function setHidden(noteId, userId, hidden) {
+  const [result] = await pool.query(
+    'UPDATE notes SET is_hidden = ? WHERE id = ? AND user_id = ?',
+    [hidden ? 1 : 0, noteId, userId]
+  )
+  if (result.affectedRows === 0) throw new HttpError(404, '笔记不存在或无权限操作')
+  await cache.delByPrefix('feed:v1:')
+}
+
 module.exports = {
   listFeed,
   getDetail,
@@ -232,4 +259,5 @@ module.exports = {
   publish,
   remove,
   update,
+  setHidden,
 }

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS notes (
   content     TEXT          NOT NULL COMMENT '正文',
   images      TEXT          COMMENT '图片URL数组(JSON)',
   video       VARCHAR(500)  DEFAULT NULL COMMENT '视频URL（笔记为视频笔记时）',
+  is_hidden   TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '是否隐藏(1=仅自己可见，抖音式)',
   user_id     INT           NOT NULL COMMENT '作者ID',
   category    VARCHAR(50)   DEFAULT '其他' COMMENT '分类/话题',
   likes       INT           DEFAULT 0 COMMENT '点赞数（冗余计数）',
@@ -283,6 +284,7 @@ CALL ensure_column('drafts', 'category', "VARCHAR(50) DEFAULT '其他' COMMENT '
 CALL ensure_column('comments', 'like_count', "INT DEFAULT 0 COMMENT '点赞数'");
 CALL ensure_column('notes', 'region', "VARCHAR(50) DEFAULT NULL COMMENT 'IP属地'");
 CALL ensure_column('users', 'region', "VARCHAR(50) DEFAULT NULL COMMENT 'IP属地'");
+CALL ensure_column('notes', 'is_hidden', "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否隐藏(1=仅自己可见)'");
 CALL ensure_column('messages', 'image', "VARCHAR(500) DEFAULT NULL COMMENT '图片URL'");
 
 -- notes：首页瀑布流时间倒序

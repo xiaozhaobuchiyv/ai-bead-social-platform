@@ -87,6 +87,16 @@ export const noteApi = {
     return request.post(`/notes/delete/${id}`)
   },
 
+  // 隐藏笔记（他人不可见，自己仍可见）
+  hideNote: (id) => {
+    return request.post(`/notes/hide/${id}`)
+  },
+
+  // 取消隐藏笔记
+  unhideNote: (id) => {
+    return request.post(`/notes/unhide/${id}`)
+  },
+
   // 分类浏览
   getNotesByCategory: (cate) => {
     return request.get(`/notes/category/${cate}`)

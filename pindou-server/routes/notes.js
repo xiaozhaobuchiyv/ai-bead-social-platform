@@ -35,6 +35,11 @@ router.post('/video-upload', requireAuth, controller.uploadVideo)
 // 删除（需登录）
 router.post('/delete/:id', requireAuth, controller.remove)
 
+// 隐藏（需登录，仅作者本人；隐藏后他人不可见）
+router.post('/hide/:id', requireAuth, controller.hide)
+// 取消隐藏（需登录，仅作者本人）
+router.post('/unhide/:id', requireAuth, controller.unhide)
+
 // 更新（需登录）
 router.put('/:id', requireAuth, controller.update)
 
