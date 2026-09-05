@@ -65,11 +65,6 @@ const router = createRouter({
           path: 'designs',
           meta: { title: '我的图纸', icon: 'Picture', needLogin: true, showHeader: false },
           component: () => import('@/views/MyDesignsView.vue')
-        },
-        {
-          path: 'feedback',
-          meta: { title: '意见反馈', needLogin: false, showHeader: false },
-          component: () => import('@/views/FeedbackView.vue')
         }
       ]
     },

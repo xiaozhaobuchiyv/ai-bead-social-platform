@@ -1,5 +1,6 @@
 <script setup>
 import SideBar from '@/components/SideBar.vue'
+import FeedbackDialog from '@/components/FeedbackDialog.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRouteProgress } from '@/composables/useRouteProgress'
@@ -13,6 +14,7 @@ const searchContent = ref('')
 const searchHistory = ref([])
 const showHistory = ref(false)
 const historyStorageKey = 'pindou-search-history'
+const feedbackVisible = ref(false)
 
 const showHeader = computed(() => route.meta?.showHeader !== false)
 const showSearch = computed(() => route.path === '/')
@@ -126,7 +128,7 @@ onMounted(() => {
               </div>
             </transition>
           </div>
-          <router-link to="/feedback" class="feedback-link" title="意见反馈 / Bug 上报">Bug反馈</router-link>
+          <span class="feedback-link" title="意见反馈 / Bug 上报" @click="feedbackVisible = true">Bug反馈</span>
         </div>
       </el-header>
       <el-main class="main-view">
@@ -137,6 +139,7 @@ onMounted(() => {
         </router-view>
       </el-main>
     </div>
+    <FeedbackDialog v-model="feedbackVisible" />
   </div>
 </template>
 
@@ -174,7 +177,7 @@ onMounted(() => {
     position: relative;
   }
 
-  /* 顶部最右：纯文字反馈入口（无按钮背景） */
+  /* 顶部最右：纯文字反馈入口（无按钮背景，点击弹窗） */
   .feedback-link {
     position: absolute;
     right: 28px;
@@ -183,6 +186,7 @@ onMounted(() => {
     font-size: 13px;
     color: #0f766e;
     text-decoration: none;
+    cursor: pointer;
     padding: 6px 8px;
     transition: color 0.18s ease;
 
