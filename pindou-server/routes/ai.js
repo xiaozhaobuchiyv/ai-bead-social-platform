@@ -332,7 +332,9 @@ router.post('/chat-with-image', assertAiConfigured, optionalAuth, async (req, re
 
 router.post('/convert', optionalAuth, async (req, res) => {
   try {
-    const { imageUrl, dataUrl, gridSize = 52, maxColors = 292, options = {} } = req.body || {}
+    // 统一 MARD 全色（291 色）：maxColors 默认 0 = 不限色数；
+    // 开源算法不含增强类预处理，因此 edgeEnhance/denoise/brightnessBoost/dithering 默认关闭，仅显式开启才生效。
+    const { imageUrl, dataUrl, gridSize = 52, maxColors = 0, options = {} } = req.body || {}
     if (!imageUrl && !dataUrl) {
       return res.status(400).json({ code: 400, msg: '请提供 imageUrl 或 dataUrl' })
     }
@@ -353,9 +355,9 @@ router.post('/convert', optionalAuth, async (req, res) => {
       gridSize: size,
       maxColors: colors,
       options: {
-        edgeEnhance: options.edgeEnhance !== false,
-        denoise: options.denoise !== false,
-        brightnessBoost: options.brightnessBoost !== false,
+        edgeEnhance: options.edgeEnhance === true,
+        denoise: options.denoise === true,
+        brightnessBoost: options.brightnessBoost === true,
         dithering: options.dithering === true,
       },
     })

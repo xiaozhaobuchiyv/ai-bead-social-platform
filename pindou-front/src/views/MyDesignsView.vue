@@ -150,8 +150,8 @@ const openDetail = (design) => {
   detailVisible.value = true
 }
 
-/** 一键发布为笔记 */
-const publishDesign = (design) => {
+/** 一键发布为笔记（style: 'blueprint' 图纸 / 'pixel' 纯像素图） */
+const publishDesign = (design, style = 'blueprint') => {
   const target = design?.id ? design : currentDesign.value
   if (!target) return
   const canvas = document.createElement('canvas')
@@ -159,7 +159,7 @@ const publishDesign = (design) => {
     pixels: deserializePixels(target.pixels, target.palette || []),
     gridWidth: target.gridWidth,
     gridHeight: target.gridHeight,
-  })
+  }, { style })
   localStorage.setItem('pindouPublishImage', canvas.toDataURL('image/png'))
   detailVisible.value = false
   ElMessage.success('已带图跳转发布页~')

@@ -62,8 +62,8 @@ All routes nest under a `Layout` component (`components/Layout.vue`) at `/`:
 ---
 
 ### `src/utils/pindou.js` (Canvas pattern algorithm) — see §4
-**Purpose:** Shared pindou (perler-bead) conversion engine used by `PindouDesigner.vue` and `PineXiaoDouView.vue`. Header comments describe a CIE-Lab ΔE color match, Floyd–Steinberg dithering, Gaussian denoise, Laplacian sharpen, and frequency×brightness×saturation color quantization, mirroring a backend `jimp` implementation.
-**Relevant exports:** `PINDOU_COLORS` (Perler palette), `rgbToLab`, `findNearestColor`, `getBrightness`, `applyGaussianBlur`, `applyEdgeEnhance`, `applyDithering`, `quantizeColors`, `calculateSimilarity`, `convertImageToPindou`, `drawPatternToCanvas`, `downloadDesign`, `downloadPattern`, `serializePixels`, `deserializePixels`, plus a default export object listing them all.
+**Purpose:** Shared pindou (perler-bead) conversion engine used by `PindouDesigner.vue` and `PineXiaoDouView.vue`. Pipeline is a port of the open-source `bead-pattern-generator` (no post-processing, no forced color cap); the nearest-color metric defaults to **CIE Lab ΔE** (`MATCH_USE_LAB=true`) for perceptual fidelity — set to `false` to reproduce the open-source RGB Euclidean matching 1:1. Mirrors a backend `jimp` implementation.
+**Relevant exports:** `PINDOU_COLORS` (Perler palette), `rgbToLab`, `findNearestColor`, `getBrightness`, `applyGaussianBlur`, `applyEdgeEnhance`, `applyDithering`, `quantizeColors`, `calculateSimilarity`, `convertImageToPindou`, `drawPatternToCanvas`, `downloadDesign`, `downloadPixelOnly`, `downloadPattern`, `serializePixels`, `deserializePixels`, plus a default export object listing them all.
 
 ---
 
@@ -186,7 +186,7 @@ Both files exist. The analysis in §5 establishes that `store/auth.js` is **dead
 
 ### `src/components/PindouPatternViewer.vue`
 **Purpose:** Renders a generated pindou design: original image, thumbnail canvas, zoomable/pannable grid canvas, color palette, stats, and action buttons (download / save / publish / regenerate).
-**Feature logic:** Two canvases: `updateThumbnail` (1px-per-cell) and `drawGrid` via `drawPatternToCanvas`. Zoom in/out (0.3–3, step .25) and mouse-wheel zoom centered at cursor; drag-to-pan; fullscreen via Fullscreen API. Downstream `handleDownloadDesign`→`downloadDesign`, `handleDownloadPattern`→`downloadPattern(result, gridWidth)`. Emits `save/publish/regenerate`.
+**Feature logic:** Two canvases: `updateThumbnail` (1px-per-cell) and `drawGrid` via `drawPatternToCanvas`. A "图纸样式" toggle switches between `blueprint` (施工图纸/格子纸: blue grid + pink every-10 lines + labels + row/col numbers, ported from the open-source `generate_pattern_image`) and `pixel` (pure pixel art without grid/labels, like `generate_preview_image`); the chosen style is applied to display, downloads and is emitted with `save/publish` so the saved preview/note image matches. Zoom in/out (0.3–3, step .25) and mouse-wheel zoom centered at cursor; drag-to-pan; fullscreen via Fullscreen API. `handleDownloadDesign`→`downloadDesign` (blueprint) or `downloadPixelOnly` (pixel), plus a dedicated 下载像素图 button; `handleDownloadPattern`→`downloadPattern(result, gridWidth)`. Emits `save(result, style)/publish(result, style)/regenerate`.
 **Issues:** `defineExpose({ drawGrid, updateThumbnail })` but telemetry not used by parents. `handleWheel` uses `@wheel.prevent` on the wrapper — makes browser page scroll impossible over the grid (UX choice). `image-rendering: pixelated; crisp-edges` (the `crisp-edges` is a non-standard alias). Canvas scaling is done via CSS transform on `.canvas-container`, not DPR-aware.
 
 ---
@@ -219,8 +219,8 @@ Both files exist. The analysis in §5 establishes that `store/auth.js` is **dead
 
 ### `src/views/PindouDesigner.vue`
 **Purpose:** Standalone local pindou-pattern generator (upload image → convert → view/save/publish).
-**Feature logic:** Upload via click/dragdrop (dataURL), choose grid size (16/24/32/48/52/64/86/128) and color count (4/6/8/12/24/32/58/88/131/292), advanced toggles (edgeEnhance/denoise/dithering/brightnessBoost defaults: true/true/false/true). `generatePindou` calls `convertImageToPindou`, switches to `result` tab. `saveDesign` and `publishDesign` serialize pixels and render a PNG preview; publish stores it under `pindouPublishImage` and routes to `/publish`.
-**Issues:** Uses an Element Plus `<select>` (native select, not `el-select`). The `colorOptions` and `gridOptions` duplicate the arrays in `PineXiaoDouView.vue` and the `PINDOU_COLORS` length (~292), i.e., a magic `292` option which is the palette size. No image dimension cap before conversion (a huge image may prove heavy). `renderPatternImage` uses hardcoded `pixelSize:18, labelSize:28` (duplicated in PindouPatternViewer defaults and PineXiaoDouView).
+**Feature logic:** Upload via click/dragdrop (dataURL), choose **grid size only** (16/24/32/48/52/64/86/128); color count and the edgeEnhance/denoise/dithering/brightnessBoost toggles were removed — conversion always uses the full MARD 291-color palette with no enhancement (open-source algorithm has no such preprocessing). `generatePindou` calls `convertImageToPindou(image, gridSize)` (no options), switches to `result` tab. `saveDesign` and `publishDesign` serialize pixels and render a PNG preview; publish stores it under `pindouPublishImage` and routes to `/publish`. Saved designs record `maxColors: 0` (unlimited = full MARD palette).
+**Issues:** Uses an Element Plus `<select>` (native select, not `el-select`). The `gridOptions` array duplicates the one in `PineXiaoDouView.vue` (and the old magic `292` color option / color-count selectors are gone). No image dimension cap before conversion (a huge image may prove heavy). `renderPatternImage` uses hardcoded `pixelSize:18, labelSize:28` (duplicated in PindouPatternViewer defaults and PineXiaoDouView).
 
 ---
 
@@ -296,28 +296,29 @@ There are **three independent mechanisms** for resolving the backend base, plus 
 
 ## 4. Pindou Pattern Algorithm (`utils/pindou.js`)
 
-Header describes (interview-ready) semantics: CIE-Lab ΔE color matching, Floyd–Steinberg dithering, 3×3 Gaussian denoise, Laplacian sharpen, and frequency×brightness×saturation color quantization. The engine is pure-browser with the Canvas API and is documented as mirroring a backend `jimp` implementation.
+Header describes the algorithm as a pipeline port of the open-source `bead-pattern-generator` (`bead_generator.py`): frequency-based quantization (no UI color cap) and no post-processing. The nearest-color metric defaults to **CIE Lab ΔE** (`MATCH_USE_LAB=true`, perceptually closer to the source image, ≈20% lower average ΔE than RGB); flipping the const to `false` reproduces the open-source RGB Euclidean nearest neighbor 1:1. Floyd–Steinberg dithering / 3×3 Gaussian denoise / Laplacian sharpen still exist as engine internals but are **no longer exposed in the UI and default off**. The engine is pure-browser with the Canvas API and is documented as mirroring a backend `jimp` implementation.
 
 **Functions & their logic:**
 - **`PINDOU_COLORS`** — Perler-style palette array of `{ name, code, rgb }` (namespaces A1..A26, B1..B32, C1..C29, D1..D26, E1..E24, F1..F25, G1..G21, H1..H23, M1..M15, P1..P23, Q1..Q5, R1..R28, T1, Y1..Y5, ZG1..ZG8) ≈ 292 entries.
 - **`rgbToLab(rgb)`** — standard sRGB→linear→XYZ→LAB transform (D65, ref X/Y/Z 95.047/100/108.883).
-- **`findNearestColor(rgb)`** — iterates the palette, computes CIE-Lab ΔE (`sqrt(ΔL²+Δa²+Δb²)`), applies brightness-based distance penalties (avoids mapping bright pixels to very dark/very light beads), returns `{ ...color, distance }`.
+- **`findNearestColor(rgb)`** — iterates the palette and returns the closest color as `{ ...color, distance }`. Default metric: CIE Lab ΔE (`sqrt(ΔL²+Δa²+Δb²)`, precomputed `colorLabCache`); with `MATCH_USE_LAB=false` it uses the open-source RGB Euclidean squared distance (`ΔR²+ΔG²+ΔB²`).
 - **`getBrightness(hexColor)`** — perceptual luminance `(299r+587g+114b)/1000`.
 - **`applyGaussianBlur(ctx,w,h)`** — separable-less 3×3 kernel `[1,2,1,2,4,2,1,2,1]/16`, fills non-edge pixels on `ImageData`.
 - **`applyEdgeEnhance(ctx,w,h)`** — Laplacian kernel `[0,-1,0,-1,5,-1,0,-1,0]`, clamps to 0..255.
 - **`applyDithering(ctx,w,h)`** — Floyd–Steinberg on `ImageData`, using `findNearestColor`, distributing error `7/16,3/16,5/16,1/16`.
-- **`quantizeColors(pixels, maxColors, preferBright)`** — counts each code, scores `count × (1 + brightness/255*0.8) × (1 + saturation/255*0.5)`, keeps top `maxColors`, then remaps **every** palette color to the nearest kept color (Lab distance, with a brightness bias). Returns remapped pixels.
+- **`quantizeColors(pixels, maxColors)`** — counts each code, keeps the top `maxColors` by usage frequency, then remaps every other palette color to the nearest kept color (metric matches `MATCH_USE_LAB`: Lab ΔE by default, RGB squared otherwise). Returns remapped pixels. (Port of the open-source `max_colors` clipping.)
 - **`calculateSimilarity(originalPixels, pindouPixels)`** — average ΔE then `max(0,min(100, round(100 - avgΔE/12*100)))`.
-- **`convertImageToPindou(imageSrc, size, options)`** — loads image (crossOrigin Anonymous), computes `gridWidth/gridHeight` preserving aspect (min 8), processes at ≥128 for smoothing, applies brightnessBoost (×1.08), optional denoise/edgeEnhance, then downsamples to the grid, optional dithering, builds `pixels` (nearest color; alpha<128 → white T1), optional quantization, computes palette + similarity, resolves `{ pixels, colorPalette, totalPixels, colorCount, estimatedTime:'${round(pixels/400)}小时', originalImage, similarity, gridWidth, gridHeight }`.
-- **`drawPatternToCanvas(canvas, result, {pixelSize=18,labelSize=28})`** — draws each bead as a filled square + color-code label (label text color by brightness), adds grid lines and row/col numbers.
-- **`downloadDesign(result, {...})`** — draws the full design plus a color-palette swatch grid and stats, then downloads as PNG via `canvas.toDataURL`.
+- **`convertImageToPindou(imageSrc, size, options)`** — loads image (crossOrigin Anonymous), computes `gridWidth/gridHeight` preserving aspect (min 8), processes at ≥128 for smoothing, then downsamples to the grid, builds `pixels` (nearest palette color by Lab ΔE default; alpha<128 → white T1), computes palette + similarity, resolves `{ pixels, colorPalette, totalPixels, colorCount, estimatedTime:'${round(pixels/400)}小时', originalImage, similarity, gridWidth, gridHeight }`. Enhancement options (`brightnessBoost`/`denoise`/`edgeEnhance`/`dithering`) and `maxColors` quantization are honored only when passed; the UI no longer passes them, so callers get the cleaned pipeline on the full MARD 291 palette.
+- **`drawPatternToCanvas(canvas, result, {pixelSize=18,labelSize=28,style='blueprint'})`** — draws the bead grid in one of two styles. `blueprint` (default, ported from open-source `generate_pattern_image`): filled squares + in-cell color-code labels, light-blue grid lines and thicker pink lines every 10 cells, row/col numbers in the margins. `pixel`: seamless pure-color pixel map with no grid lines/labels (like `generate_preview_image`).
+- **`downloadDesign(result, {...})`** — blueprint-style drawing plus a color-palette swatch grid and stats, downloaded as PNG (style `pixel` exports the pure pixel map only).
+- **`downloadPixelOnly(result, {cellSize=18})`** — downloads only the pure pixel image (no grid lines / no labels).
 - **`downloadPattern(result, gridSize=24)`** — draws a "sticker" grid of filled circles with coordinates, downloads PNG.
 - **`serializePixels` / `deserializePixels`** — flatten pixels to a comma-joined code string and reconstruct (with palette, falling back to `colorCodeMap`).
 
 **Issues / non-enterprise-grade in this module:**
-- Magical dimensionless constants: `size` default 24/48/52, `.8`/`.95`/`.5` biases, `estimatedTime` divisor `400` ("小时" always — claims a 64×64 grid is ~10 hours, which is plainly wrong for real-time estimates), `12` in similarity divisor.
+- Magical dimensionless constants: `size` default 24/48/52, `estimatedTime` divisor `400` ("小时" always — claims a 64×64 grid is ~10 hours, which is plainly wrong for real-time estimates), `12` in similarity divisor.
 - Memory: `applyDithering` copies the whole `ImageData` into `tempData` and runs `findNearestColor` per pixel inside a double loop — O(gridW×gridH×palette) with repeated `rgbToLab` calls; for a 128 grid × 292 palette this is heavy but bounded.
-- `quantizeColors` builds a full-palette→palette `mapping` and yields remapped codes; the `.8` weighting on the L* channel is an unexplained magic factor.
+- `quantizeColors` builds a full-palette→palette `mapping` and yields remapped codes; the remap metric follows `MATCH_USE_LAB` (Lab ΔE by default).
 - `convertImageToPindou` uses `Math.round(size/imgRatio)` — can produce `gridHeight` that is ratio-broken; min-clamps to 8.
 - `downloadDesign`/`downloadPattern` construct an `<a>` and `.click()` without appending then removing it, and never revoke object URLs (for dataURL it's fine).
 - `PINDOU_COLORS` is a large static array — the `292` color option in PindouDesigner/PineXiaoDou hardcodes the length as a magic number.
@@ -379,8 +380,8 @@ Uses `fetch('/api/ai/chat')` (text) or `fetch('/api/ai/chat-with-image')` (with 
 **Convert-to-pattern integration:**
 - `sendMessage` / SSE produce assistant messages with `imageUrl` (AI-generated) or user uploaded `imageUrls`.
 - Each user image / AI image has a "转图纸"/"转拼豆图纸" button → `openPatternDialog(imgUrl)`.
-- `convertForPattern` decides engine: `isRemoteSource(url)` = remote non-same-origin (`https?` and not starting with `getApiBaseUrl()`) → calls **server** `/api/ai/convert` (jimp); otherwise → local `convertImageToPindou` (Canvas). Server result pixels get `label`/`name` backfilled so both engines look the same.
-- The dialog (`patternDialogVisible`) hosts `PindouPatternViewer` with grid/color selects that re-run `convertForPattern` on change; shows "服务端引擎/本地引擎" badge.
+- `convertForPattern` decides engine: `isRemoteSource(url)` = remote non-same-origin (`https?` and not starting with `getApiBaseUrl()`) → calls **server** `/api/ai/convert` (jimp); otherwise → local `convertImageToPindou` (Canvas). Both use the full MARD 291 palette with no enhancement (the color select was removed; only the grid-size select remains). Server result pixels get `label`/`name` backfilled so both engines look the same.
+- The dialog (`patternDialogVisible`) hosts `PindouPatternViewer` with a single grid-size select that re-runs `convertForPattern` on change; shows "服务端引擎/本地引擎" badge.
 - `savePatternDesign` → `designApi.saveDesign` (requires login, else shows login modal). `publishPatternDesign` renders to PNG → `pindouPublishImage` → `/publish`.
 
 **Issues / non-enterprise patterns:**

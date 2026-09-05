@@ -3,7 +3,7 @@
     <!-- 头部 -->
     <div class="designer-header">
       <h2><el-icon :size="24" color="#2ec4b5" style="vertical-align: -3px; margin-right: 8px"><Brush /></el-icon>拼豆图纸生成器</h2>
-      <p>上传图片，生成精确的拼豆图纸（算法与拼小豆 AI 共用同一引擎）</p>
+      <p>上传图片，选择网格尺寸即可生成 MARD 291 色拼豆图纸（算法与拼小豆 AI 共用同一引擎）</p>
     </div>
 
     <!-- 功能选项卡 -->
@@ -50,39 +50,12 @@
               <option v-for="size in gridOptions" :key="size" :value="size">{{ size }}×{{ size }} {{ sizeLabel(size) }}</option>
             </select>
           </div>
-          <div class="option-group">
-            <label>颜色数量:</label>
-            <select v-model="maxColors" class="grid-select">
-              <option :value="0">不限制 (原图色彩)</option>
-              <option v-for="c in colorOptions" :key="c" :value="c">{{ c }}色</option>
-            </select>
-          </div>
           <button class="generate-btn" @click="generatePindou" :disabled="!uploadedImage || isGenerating">
             <el-icon v-if="isGenerating" class="is-loading" :size="16"><Loading /></el-icon>
             <el-icon v-else :size="16"><MagicStick /></el-icon>
             <span>{{ isGenerating ? '生成中...' : '生成图纸' }}</span>
           </button>
           <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
-        </div>
-
-        <!-- 高级选项 -->
-        <div class="advanced-options">
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="enableEdgeEnhance" />
-            <span>边缘增强</span>
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="enableDenoise" />
-            <span>降噪处理</span>
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="enableDithering" />
-            <span>抖动效果</span>
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" v-model="enableBrightnessBoost" />
-            <span>亮度提升</span>
-          </label>
         </div>
       </div>
 
@@ -125,7 +98,6 @@ const tabs = [
 ]
 
 const gridOptions = [16, 24, 32, 48, 52, 64, 86, 128]
-const colorOptions = [4, 6, 8, 12, 24, 32, 58, 88, 131, 292]
 
 const sizeLabel = (size) => {
   const map = {
@@ -139,18 +111,11 @@ const activeTab = ref('upload')
 const fileInput = ref(null)
 const uploadedImage = ref(null)
 const gridSize = ref(24)
-const maxColors = ref(6)
 
 const pindouResult = ref(null)
 const isGenerating = ref(false)
 const errorMessage = ref('')
 const saving = ref(false)
-
-// 高级选项
-const enableEdgeEnhance = ref(true)
-const enableDenoise = ref(true)
-const enableDithering = ref(false)
-const enableBrightnessBoost = ref(true)
 
 // 上传相关
 const triggerUpload = () => fileInput.value?.click()
@@ -188,13 +153,8 @@ const generatePindou = async () => {
   try {
     activeTab.value = 'result'
 
-    pindouResult.value = await convertImageToPindou(uploadedImage.value, gridSize.value, {
-      edgeEnhance: enableEdgeEnhance.value,
-      denoise: enableDenoise.value,
-      dithering: enableDithering.value,
-      maxColors: maxColors.value,
-      brightnessBoost: enableBrightnessBoost.value,
-    })
+    // 统一使用 MARD 全色（291 色），仅按所选网格尺寸转换，不做限色/增强/抖动
+    pindouResult.value = await convertImageToPindou(uploadedImage.value, gridSize.value)
 
     await nextTick()
   } catch (error) {
@@ -206,15 +166,15 @@ const generatePindou = async () => {
   }
 }
 
-/** 将图纸渲染为 PNG dataURL（用于保存/发布） */
-const renderPatternImage = (result) => {
+/** 将图纸渲染为 PNG dataURL（用于保存/发布），style: 'blueprint'|'pixel' */
+const renderPatternImage = (result, style = 'blueprint') => {
   const canvas = document.createElement('canvas')
-  drawPatternToCanvas(canvas, result, { pixelSize: 18, labelSize: 28 })
+  drawPatternToCanvas(canvas, result, { pixelSize: 18, labelSize: 28, style })
   return canvas.toDataURL('image/png')
 }
 
 // 保存到我的图纸
-const saveDesign = async (result) => {
+const saveDesign = async (result, style = 'blueprint') => {
   if (!result) return
   saving.value = true
   try {
@@ -223,14 +183,14 @@ const saveDesign = async (result) => {
       gridWidth: result.gridWidth,
       gridHeight: result.gridHeight,
       gridSize: gridSize.value,
-      maxColors: maxColors.value,
+      maxColors: 0, // 不限制色数，统一使用 MARD 全色（291 色）
       pixels: serializePixels(result.pixels),
       palette: result.colorPalette,
       totalPixels: result.totalPixels,
       colorCount: result.colorCount,
       similarity: result.similarity,
       estimatedTime: result.estimatedTime,
-      previewImage: renderPatternImage(result),
+      previewImage: renderPatternImage(result, style),
     }
     const res = await designApi.saveDesign(payload)
     if (res.code === 200) {
@@ -246,9 +206,9 @@ const saveDesign = async (result) => {
 }
 
 // 发布为笔记
-const publishDesign = (result) => {
+const publishDesign = (result, style = 'blueprint') => {
   if (!result) return
-  const dataUrl = renderPatternImage(result)
+  const dataUrl = renderPatternImage(result, style)
   localStorage.setItem('pindouPublishImage', dataUrl)
   router.push('/publish')
 }

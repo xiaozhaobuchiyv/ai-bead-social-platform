@@ -24,6 +24,15 @@
           <button class="zoom-btn fullscreen-btn" @click="toggleFullscreen"><el-icon :size="16"><FullScreen /></el-icon></button>
         </div>
       </div>
+      <div class="view-style-bar">
+        <span class="view-style-label">图纸样式</span>
+        <button class="view-style-btn" :class="{ active: styleMode === 'blueprint' }" @click="setStyle('blueprint')">
+          施工图纸（格子纸）
+        </button>
+        <button class="view-style-btn" :class="{ active: styleMode === 'pixel' }" @click="setStyle('pixel')">
+          纯像素图（无格线标注）
+        </button>
+      </div>
       <div
         class="grid-wrapper"
         ref="gridWrapper"
@@ -85,14 +94,15 @@
 
     <!-- 操作按钮 -->
     <div class="action-buttons">
-      <button class="action-btn" @click="handleDownloadDesign"><el-icon :size="16"><Download /></el-icon><span>下载图纸</span></button>
+      <button class="action-btn" @click="handleDownloadDesign"><el-icon :size="16"><Download /></el-icon><span>{{ styleMode === 'pixel' ? '下载像素图' : '下载图纸' }}</span></button>
+      <button v-if="styleMode !== 'pixel'" class="action-btn secondary" @click="handleDownloadPixel"><el-icon :size="16"><Picture /></el-icon><span>下载像素图</span></button>
       <button class="action-btn" @click="handleDownloadPattern"><el-icon :size="16"><Grid /></el-icon><span>下载网格图</span></button>
-      <button v-if="showSave" class="action-btn" @click="emit('save', result)" :disabled="saving">
+      <button v-if="showSave" class="action-btn" @click="handleSave" :disabled="saving">
         <el-icon v-if="saving" class="is-loading" :size="16"><Loading /></el-icon>
         <el-icon v-else :size="16"><FolderOpened /></el-icon>
         <span>{{ saving ? '保存中...' : '保存到我的图纸' }}</span>
       </button>
-      <button v-if="showPublish" class="action-btn" @click="emit('publish', result)"><el-icon :size="16"><Upload /></el-icon><span>发布为笔记</span></button>
+      <button v-if="showPublish" class="action-btn" @click="handlePublish"><el-icon :size="16"><Upload /></el-icon><span>发布为笔记</span></button>
       <button v-if="showRegenerate" class="action-btn secondary" @click="emit('regenerate')">
         <el-icon :size="16"><RefreshRight /></el-icon><span>重新生成</span>
       </button>
@@ -102,7 +112,7 @@
 
 <script setup>
 import { ref, watch, nextTick } from 'vue'
-import { drawPatternToCanvas, downloadDesign, downloadPattern } from '@/utils/pindou'
+import { drawPatternToCanvas, downloadDesign, downloadPixelOnly, downloadPattern } from '@/utils/pindou'
 
 const props = defineProps({
   result: { type: Object, default: null },
@@ -123,6 +133,13 @@ const panY = ref(0)
 const isPanning = ref(false)
 const panStart = ref({ x: 0, y: 0 })
 const selectedColor = ref(null)
+// 图纸样式：'blueprint' = 施工图纸（格子纸：蓝网格+每10格粉色线+色号+行列编号）；'pixel' = 纯像素图（无格线无标注）
+const styleMode = ref('blueprint')
+
+const setStyle = (style) => {
+  styleMode.value = style
+  drawGrid()
+}
 
 // 绘制缩略图
 const updateThumbnail = () => {
@@ -140,10 +157,10 @@ const updateThumbnail = () => {
   })
 }
 
-// 绘制带网格的图纸
+// 绘制图纸（跟随当前样式：格子纸 / 纯像素）
 const drawGrid = () => {
   if (!gridCanvas.value || !props.result) return
-  drawPatternToCanvas(gridCanvas.value, props.result)
+  drawPatternToCanvas(gridCanvas.value, props.result, { style: styleMode.value })
 }
 
 watch(
@@ -239,8 +256,21 @@ const toggleFullscreen = () => {
 // ==================== 下载 ====================
 const handleDownloadDesign = () => {
   if (!props.result) return
-  downloadDesign(props.result)
+  if (styleMode.value === 'pixel') {
+    downloadPixelOnly(props.result)
+  } else {
+    downloadDesign(props.result)
+  }
 }
+
+const handleDownloadPixel = () => {
+  if (!props.result) return
+  downloadPixelOnly(props.result)
+}
+
+// 保存 / 发布时把当前图纸样式一并交给父级，使生成的预览图与所选样式一致
+const handleSave = () => emit('save', props.result, styleMode.value)
+const handlePublish = () => emit('publish', props.result, styleMode.value)
 
 const handleDownloadPattern = () => {
   if (!props.result) return
@@ -344,6 +374,41 @@ defineExpose({ drawGrid, updateThumbnail })
       text-align: center;
       font-size: 13px;
       color: #636e72;
+    }
+  }
+}
+
+.view-style-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+
+  .view-style-label {
+    font-size: 13px;
+    color: #636e72;
+  }
+
+  .view-style-btn {
+    padding: 6px 14px;
+    border: 1px solid #d5e8e5;
+    border-radius: 16px;
+    background: #fff;
+    font-size: 13px;
+    color: #2d3436;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+      border-color: #2ec4b5;
+    }
+
+    &.active {
+      background: #2ec4b5;
+      border-color: #2ec4b5;
+      color: #fff;
     }
   }
 }

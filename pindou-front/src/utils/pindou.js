@@ -5,11 +5,13 @@
  *   1. 图纸转换页（PindouDesigner.vue）—— 本地图片转拼豆图纸
  *   2. 拼小豆 AI 聊天（PineXiaoDouView.vue）—— AI 生成图 / 用户上传图一键转图纸
  *
- * 算法说明（面试可讲）：
- *   - 颜色匹配：CIE Lab 色差（ΔE）而非简单 RGB 距离，更接近人眼感知
- *   - 抖动：Floyd–Steinberg 误差扩散抖动，提升低色数下的观感
- *   - 降噪：3x3 高斯模糊；边缘增强：Laplacian 锐化核
- *   - 量化：按“使用频次 × 亮度 × 饱和度”重要性排序裁剪色板
+ * 算法说明：管线结构移植自开源 bead-pattern-generator（bead_generator.py）。
+ *   - 颜色匹配：默认 CIE Lab ΔE 感知距离最近邻（MATCH_USE_LAB=true，观感更接近原图）；
+ *     置为 false 即 1:1 复刻开源 RGB 欧氏距离最近邻。
+ *   - 量化：按“使用频次”保留前 N 色（对应开源 max_colors，UI 默认不限色 = MARD 全色）
+ *   - 抖动：Floyd–Steinberg 误差扩散（引擎保留，UI 默认关闭）
+ *   - 预处理：3x3 高斯降噪、Laplacian 边缘增强（引擎保留，UI 默认关闭）
+ *   - 相似度：基于 CIE Lab ΔE 的平均相似度（仅作展示指标）
  *
  * 纯浏览器实现（依赖 Canvas API），与后端 jimp 版算法保持一致。
  */
@@ -334,32 +336,36 @@ export function rgbToLab(rgb) {
   return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)]
 }
 
+// 匹配度量开关：true = CIE Lab ΔE 感知距离（观感更接近原图，默认）；
+// false = 开源 bead_generator.py 原版 RGB 欧氏距离最近邻（1:1 复刻开源）。
+const MATCH_USE_LAB = true
+
+// 各色号预计算 CIE Lab，避免匹配时重复转换
+const colorLabCache = new Map(PINDOU_COLORS.map((c) => [c.code, rgbToLab(c.rgb)]))
+
 /**
- * 最近颜色匹配（CIE Lab ΔE + 亮度偏好调节，避免死黑/过曝）
+ * 最近颜色匹配（默认 CIE Lab ΔE 感知距离；MATCH_USE_LAB=false 时为开源 RGB 欧氏距离）
  */
 export function findNearestColor(rgb) {
   let minDistance = Infinity
   let nearestColor = PINDOU_COLORS[0]
-
-  const brightness = (rgb[0] + rgb[1] + rgb[2]) / 3
-  const lab1 = rgbToLab(rgb)
+  const lab1 = MATCH_USE_LAB ? rgbToLab(rgb) : null
 
   for (const color of PINDOU_COLORS) {
-    const colorBrightness = (color.rgb[0] + color.rgb[1] + color.rgb[2]) / 3
-    const lab2 = rgbToLab(color.rgb)
-
-    let distance = Math.sqrt(
-      Math.pow(lab1[0] - lab2[0], 2) +
-      Math.pow(lab1[1] - lab2[1], 2) +
-      Math.pow(lab1[2] - lab2[2], 2)
-    )
-
-    if (brightness > 80 && brightness < 200) {
-      if (colorBrightness < 40) distance *= 1.3
-      if (colorBrightness > 240) distance *= 1.3
+    let distance
+    if (MATCH_USE_LAB) {
+      const lab2 = colorLabCache.get(color.code)
+      distance = Math.sqrt(
+        Math.pow(lab1[0] - lab2[0], 2) +
+        Math.pow(lab1[1] - lab2[1], 2) +
+        Math.pow(lab1[2] - lab2[2], 2)
+      )
+    } else {
+      const dr = color.rgb[0] - rgb[0]
+      const dg = color.rgb[1] - rgb[1]
+      const db = color.rgb[2] - rgb[2]
+      distance = dr * dr + dg * dg + db * db
     }
-    if (brightness < 80 && colorBrightness < 30) distance *= 1.2
-    if (brightness > 200 && colorBrightness > 240) distance *= 1.2
 
     if (distance < minDistance) {
       minDistance = distance
@@ -479,8 +485,11 @@ export function applyDithering(ctx, width, height) {
   ctx.putImageData(imageData, 0, 0)
 }
 
-/** 颜色量化：按 频次 × 亮度 × 饱和度 裁剪色板 */
-export function quantizeColors(pixels, maxColors, preferBright = true) {
+/**
+ * 颜色量化（开源算法：按使用频次保留前 N 色，其余像素归并到最近保留色）
+ * 对应 bead_generator.py 中 max_colors 的裁剪逻辑；归并度量与颜色匹配一致（默认 Lab）。
+ */
+export function quantizeColors(pixels, maxColors) {
   if (maxColors === 0 || maxColors >= pixels.length) return pixels
 
   const colorMap = new Map()
@@ -490,38 +499,35 @@ export function quantizeColors(pixels, maxColors, preferBright = true) {
   })
   if (maxColors >= colorMap.size) return pixels
 
-  const colorEntries = Array.from(colorMap.entries())
-    .map(([code, count]) => {
-      const color = colorCodeMap.get(code)
-      let importance = count
-      if (color) {
-        const brightness = (color.rgb[0] + color.rgb[1] + color.rgb[2]) / 3
-        const saturation = Math.max(...color.rgb) - Math.min(...color.rgb)
-        if (preferBright) importance *= (1 + (brightness / 255) * 0.8)
-        importance *= (1 + (saturation / 255) * 0.5)
-      }
-      return { code, count, importance, colorObj: color }
-    })
-    .sort((a, b) => b.importance - a.importance)
+  // 按频次降序取前 maxColors 个色号
+  const topCodes = Array.from(colorMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxColors)
+    .map((e) => e[0])
+  const topObjs = topCodes.map((code) => colorCodeMap.get(code)).filter(Boolean)
+  if (!topObjs.length) return pixels
 
-  const topColors = colorEntries.slice(0, maxColors).map((e) => e.code)
-
+  // 其它色号归并到距离最近的保留色（度量与颜色匹配一致：默认 Lab，可切 RGB）
   const mapping = new Map()
   PINDOU_COLORS.forEach((color) => {
+    if (topCodes.includes(color.code)) {
+      mapping.set(color.code, color)
+      return
+    }
     let minDist = Infinity
-    let bestMatch = color
-    for (const tcCode of topColors) {
-      const tc = colorCodeMap.get(tcCode)
-      if (!tc) continue
-      const brightness2 = (tc.rgb[0] + tc.rgb[1] + tc.rgb[2]) / 3
-      const lab1 = rgbToLab(color.rgb)
-      const lab2 = rgbToLab(tc.rgb)
-      let dist = Math.sqrt(
-        Math.pow((lab1[0] - lab2[0]) * 0.8, 2) +
-        Math.pow(lab1[1] - lab2[1], 2) +
-        Math.pow(lab1[2] - lab2[2], 2)
-      )
-      if (preferBright && brightness2 > (color.rgb[0] + color.rgb[1] + color.rgb[2]) / 3) dist *= 0.95
+    let bestMatch = topObjs[0]
+    for (const tc of topObjs) {
+      let dist
+      if (MATCH_USE_LAB) {
+        const la = colorLabCache.get(color.code)
+        const lb = colorLabCache.get(tc.code)
+        dist = Math.sqrt(Math.pow(la[0] - lb[0], 2) + Math.pow(la[1] - lb[1], 2) + Math.pow(la[2] - lb[2], 2))
+      } else {
+        const dr = tc.rgb[0] - color.rgb[0]
+        const dg = tc.rgb[1] - color.rgb[1]
+        const db = tc.rgb[2] - color.rgb[2]
+        dist = dr * dr + dg * dg + db * db
+      }
       if (dist < minDist) {
         minDist = dist
         bestMatch = tc
@@ -644,7 +650,7 @@ export function convertImageToPindou(imageSrc, size, options = {}) {
 
       let quantizedPixels = pixels
       if (options.maxColors && options.maxColors > 0 && options.maxColors < pixels.length && options.maxColors < 256) {
-        quantizedPixels = quantizeColors(pixels, options.maxColors, true)
+        quantizedPixels = quantizeColors(pixels, options.maxColors)
       }
 
       const finalColors = new Map()
@@ -673,78 +679,150 @@ export function convertImageToPindou(imageSrc, size, options = {}) {
 }
 
 /**
- * 在 canvas 上绘制带网格与色号标注的图纸（供页面展示与导出复用）
+ * 内部：在已就绪的 ctx 上绘制拼豆网格（供展示 / 下载 / 导出复用）
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} result { gridWidth, gridHeight, pixels }
+ * @param {object} [options] { pixelSize, labelSize, style, offsetX, offsetY }
+ *   style 'blueprint'（默认，对应开源 generate_pattern_image 的施工图纸 / 格子纸）：
+ *     色块 + 格内色号标注 + 蓝色网格线 + 每 10 格粉色粗分隔线 + 行列编号；
+ *   style 'pixel'（对应开源 generate_preview_image）：无缝纯色像素图，无格线无标注。
  */
-export function drawPatternToCanvas(canvas, result, { pixelSize = 18, labelSize = 28 } = {}) {
-  const { gridWidth, gridHeight } = result
-  const width = gridWidth
-  const height = gridHeight
+function paintPatternGrid(ctx, result, { pixelSize = 18, labelSize = 28, style = 'blueprint', offsetX = 0, offsetY = 0 } = {}) {
+  const { gridWidth: width, gridHeight: height, pixels } = result
 
-  const canvasWidth = width * pixelSize + labelSize
-  const canvasHeight = height * pixelSize + labelSize
+  // ---- 纯像素图：无缝色块，无格线 / 无标注 ----
+  if (style === 'pixel') {
+    pixels.forEach((pixel, index) => {
+      const x = (index % width) * pixelSize
+      const y = Math.floor(index / width) * pixelSize
+      ctx.fillStyle = pixel.color
+      ctx.fillRect(x, y, pixelSize, pixelSize)
+    })
+    return
+  }
 
-  canvas.width = canvasWidth
-  canvas.height = canvasHeight
+  // ---- 施工图纸（格子纸样式，配色对齐开源：蓝网格 + 每10格粉色粗线 + 行列编号 + 色号）----
+  const startX = offsetX + labelSize
+  const startY = offsetY + labelSize
+  const right = startX + width * pixelSize
+  const bottom = startY + height * pixelSize
 
-  const ctx = canvas.getContext('2d')
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight)
-
-  result.pixels.forEach((pixel, index) => {
-    const x = (index % width) * pixelSize + labelSize
-    const y = Math.floor(index / width) * pixelSize + labelSize
+  // 色块
+  pixels.forEach((pixel, index) => {
+    const x = (index % width) * pixelSize + startX
+    const y = Math.floor(index / width) * pixelSize + startY
     ctx.fillStyle = pixel.color
     ctx.fillRect(x, y, pixelSize, pixelSize)
-
-    const label = pixel.label || ''
-    if (label) {
-      const brightness = getBrightness(pixel.color)
-      const textColor = brightness > 128 ? '#000000' : '#ffffff'
-      ctx.font = 'bold 9px Arial'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = textColor
-      ctx.fillText(label, x + pixelSize / 2, y + pixelSize / 2)
-    }
   })
 
-  ctx.strokeStyle = '#000000'
-  ctx.lineWidth = 0.5
+  // 格内色号标注（格子足够大时）
+  if (pixelSize >= 12) {
+    ctx.font = `bold ${Math.max(8, Math.round(pixelSize * 0.5))}px Arial`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    pixels.forEach((pixel, index) => {
+      const label = pixel.label || pixel.name || ''
+      if (!label) return
+      if (ctx.measureText(label).width > pixelSize - 3) return
+      const x = (index % width) * pixelSize + startX
+      const y = Math.floor(index / width) * pixelSize + startY
+      const brightness = getBrightness(pixel.color)
+      ctx.fillStyle = brightness > 128 ? '#333333' : '#ffffff'
+      ctx.fillText(label, x + pixelSize / 2, y + pixelSize / 2)
+    })
+  }
+
+  // 蓝色网格线（BLUE = rgb(100,140,220)）
+  ctx.strokeStyle = 'rgb(100,140,220)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
   for (let i = 0; i <= width; i++) {
-    ctx.beginPath()
-    ctx.moveTo(i * pixelSize + labelSize, labelSize)
-    ctx.lineTo(i * pixelSize + labelSize, height * pixelSize + labelSize)
-    ctx.stroke()
+    const lx = startX + i * pixelSize
+    ctx.moveTo(lx, startY)
+    ctx.lineTo(lx, bottom)
   }
   for (let i = 0; i <= height; i++) {
-    ctx.beginPath()
-    ctx.moveTo(labelSize, i * pixelSize + labelSize)
-    ctx.lineTo(width * pixelSize + labelSize, i * pixelSize + labelSize)
-    ctx.stroke()
+    const ly = startY + i * pixelSize
+    ctx.moveTo(startX, ly)
+    ctx.lineTo(right, ly)
   }
+  ctx.stroke()
 
-  ctx.fillStyle = '#000000'
-  ctx.font = '10px Arial'
+  // 每 10 格粉色粗分隔线（PINK = rgb(240,160,180)）
+  ctx.strokeStyle = 'rgb(240,160,180)'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  for (let i = 0; i <= width; i += 10) {
+    const lx = startX + i * pixelSize
+    ctx.moveTo(lx, startY)
+    ctx.lineTo(lx, bottom)
+  }
+  for (let i = 0; i <= height; i += 10) {
+    const ly = startY + i * pixelSize
+    ctx.moveTo(startX, ly)
+    ctx.lineTo(right, ly)
+  }
+  ctx.stroke()
+
+  // 行列编号
+  ctx.fillStyle = '#555555'
+  ctx.font = `${Math.max(9, Math.round(labelSize * 0.36))}px Arial`
   ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-  for (let i = 0; i < width; i++) {
-    ctx.fillText(i + 1, i * pixelSize + labelSize + pixelSize / 2, 4)
-  }
-  ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
+  for (let i = 0; i < width; i++) {
+    ctx.fillText(String(i + 1), startX + i * pixelSize + pixelSize / 2, offsetY + labelSize / 2)
+  }
   for (let i = 0; i < height; i++) {
-    ctx.fillText(i + 1, labelSize - 4, i * pixelSize + labelSize + pixelSize / 2)
+    ctx.fillText(String(i + 1), offsetX + labelSize / 2, startY + i * pixelSize + pixelSize / 2)
+  }
+}
+
+/**
+ * 在 canvas 上绘制拼豆图纸
+ * @param {HTMLCanvasElement} canvas
+ * @param {object} result { gridWidth, gridHeight, pixels }
+ * @param {object} [options] { pixelSize=18, labelSize=28, style='blueprint'|'pixel' }
+ *   - 'blueprint'（默认）：开源施工图纸 / 格子纸样式（蓝网格 + 每10格粉色线 + 色号 + 行列编号）
+ *   - 'pixel'：纯像素图（无格线、无标注），用于“只下载/保存像素图”
+ */
+export function drawPatternToCanvas(canvas, result, { pixelSize = 18, labelSize = 28, style = 'blueprint' } = {}) {
+  const { gridWidth: width, gridHeight: height } = result
+  const ctx = canvas.getContext('2d')
+
+  if (style === 'pixel') {
+    canvas.width = width * pixelSize
+    canvas.height = height * pixelSize
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    paintPatternGrid(ctx, result, { pixelSize, style: 'pixel' })
+    return canvas
   }
 
+  canvas.width = width * pixelSize + labelSize
+  canvas.height = height * pixelSize + labelSize
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  paintPatternGrid(ctx, result, { pixelSize, labelSize, style: 'blueprint' })
   return canvas
 }
 
-/** 下载完整图纸（含配色方案与统计信息） */
-export function downloadDesign(result, { pixelSize = 18, labelSize = 28 } = {}) {
-  const { gridWidth, gridHeight, colorPalette } = result
-  const width = gridWidth
-  const height = gridHeight
+/** 下载施工图纸（默认格子纸样式；style='pixel' 时只导出纯像素图） */
+export function downloadDesign(result, { pixelSize = 18, labelSize = 28, style = 'blueprint' } = {}) {
+  const { gridWidth: width, gridHeight: height, colorPalette } = result
+
+  const gridBottom = height * pixelSize + labelSize
+
+  // 纯像素图：只下载像素图本身，不含配色表
+  if (style === 'pixel') {
+    const canvas = document.createElement('canvas')
+    drawPatternToCanvas(canvas, result, { pixelSize, style: 'pixel' })
+    const link = document.createElement('a')
+    link.download = `pindou-pixel-${Date.now()}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+    return
+  }
 
   const paletteRows = Math.ceil(colorPalette.length / 8)
   const paletteHeight = paletteRows * 30 + 40
@@ -760,65 +838,24 @@ export function downloadDesign(result, { pixelSize = 18, labelSize = 28 } = {}) 
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvasWidth, canvasHeight)
 
-  ctx.strokeStyle = '#000000'
-  ctx.lineWidth = 0.5
-  for (let i = 0; i <= width; i++) {
-    ctx.beginPath()
-    ctx.moveTo(i * pixelSize + labelSize, labelSize)
-    ctx.lineTo(i * pixelSize + labelSize, height * pixelSize + labelSize)
-    ctx.stroke()
-  }
-  for (let i = 0; i <= height; i++) {
-    ctx.beginPath()
-    ctx.moveTo(labelSize, i * pixelSize + labelSize)
-    ctx.lineTo(width * pixelSize + labelSize, i * pixelSize + labelSize)
-    ctx.stroke()
-  }
-
-  result.pixels.forEach((pixel, index) => {
-    const x = (index % width) * pixelSize + labelSize
-    const y = Math.floor(index / width) * pixelSize + labelSize
-    ctx.fillStyle = pixel.color
-    ctx.fillRect(x, y, pixelSize, pixelSize)
-    const label = pixel.label || ''
-    if (label) {
-      const brightness = getBrightness(pixel.color)
-      ctx.font = 'bold 9px Arial'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = brightness > 128 ? '#000000' : '#ffffff'
-      ctx.fillText(label, x + pixelSize / 2, y + pixelSize / 2)
-    }
-  })
-
-  ctx.fillStyle = '#000000'
-  ctx.font = '10px Arial'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'top'
-  for (let i = 0; i < width; i++) {
-    ctx.fillText(i + 1, i * pixelSize + labelSize + pixelSize / 2, 4)
-  }
-  ctx.textAlign = 'right'
-  ctx.textBaseline = 'middle'
-  for (let i = 0; i < height; i++) {
-    ctx.fillText(i + 1, labelSize - 4, i * pixelSize + labelSize + pixelSize / 2)
-  }
+  // 格子纸（蓝图）区域
+  paintPatternGrid(ctx, result, { pixelSize, labelSize, style: 'blueprint' })
 
   ctx.fillStyle = '#333'
   ctx.font = 'bold 14px Arial'
   ctx.textAlign = 'center'
-  ctx.fillText(`拼豆图纸 ${width}×${height}`, canvasWidth / 2, height * pixelSize + labelSize + 15)
+  ctx.fillText(`拼豆图纸 ${width}×${height}`, canvasWidth / 2, gridBottom + 15)
 
   ctx.fillStyle = '#333'
   ctx.font = 'bold 12px Arial'
   ctx.textAlign = 'left'
-  ctx.fillText('🎯 配色方案:', 10, height * pixelSize + labelSize + 45)
+  ctx.fillText('🎯 配色方案:', 10, gridBottom + 45)
 
   colorPalette.forEach((color, index) => {
     const row = Math.floor(index / 8)
     const col = index % 8
     const boxX = 10 + col * 80
-    const boxY = height * pixelSize + labelSize + 60 + row * 28
+    const boxY = gridBottom + 60 + row * 28
     ctx.fillStyle = color.code
     ctx.fillRect(boxX, boxY, 20, 20)
     ctx.strokeStyle = '#333'
@@ -830,7 +867,7 @@ export function downloadDesign(result, { pixelSize = 18, labelSize = 28 } = {}) 
     ctx.fillText(color.name, boxX + 25, boxY + 15)
   })
 
-  const statsY = height * pixelSize + labelSize + 60 + paletteRows * 30 + 10
+  const statsY = gridBottom + 60 + paletteRows * 30 + 10
   ctx.fillStyle = '#666'
   ctx.font = '11px Arial'
   ctx.textAlign = 'center'
@@ -842,6 +879,17 @@ export function downloadDesign(result, { pixelSize = 18, labelSize = 28 } = {}) 
 
   const link = document.createElement('a')
   link.download = `pindou-design-${Date.now()}.png`
+  link.href = canvas.toDataURL('image/png')
+  link.click()
+}
+
+/** 下载纯像素图（无格线、无标注；对应开源 generate_preview_image 的成品预览图） */
+export function downloadPixelOnly(result, { cellSize = 18 } = {}) {
+  if (!result) return
+  const canvas = document.createElement('canvas')
+  drawPatternToCanvas(canvas, result, { pixelSize: cellSize, style: 'pixel' })
+  const link = document.createElement('a')
+  link.download = `pindou-pixel-${Date.now()}.png`
   link.href = canvas.toDataURL('image/png')
   link.click()
 }
@@ -925,6 +973,7 @@ export default {
   convertImageToPindou,
   drawPatternToCanvas,
   downloadDesign,
+  downloadPixelOnly,
   downloadPattern,
   serializePixels,
   deserializePixels,

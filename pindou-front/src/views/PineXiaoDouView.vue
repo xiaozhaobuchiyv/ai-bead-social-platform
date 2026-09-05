@@ -593,12 +593,10 @@ const triggerImageUpload = () => {
 
 // ==================== 拼豆图纸转换（拼小豆 × 图纸算法融合） ====================
 const PATTERN_GRID_OPTIONS = [16, 24, 32, 48, 52, 64, 86, 128]
-const PATTERN_COLOR_OPTIONS = [4, 6, 8, 12, 24, 32, 58, 88, 131, 292]
 
 const patternDialogVisible = ref(false)
 const patternSourceImage = ref('')
 const patternGridSize = ref(52)
-const patternMaxColors = ref(292)
 const patternResult = ref(null)
 const patternConverting = ref(false)
 const patternSaving = ref(false)
@@ -618,7 +616,7 @@ const openPatternDialog = async (imageUrl) => {
   await convertForPattern(imageUrl)
 }
 
-/** 执行图纸转换（本地前端算法 / 远程服务端算法） */
+/** 执行图纸转换（本地前端算法 / 远程服务端算法）——统一 MARD 全色（291 色），仅按网格尺寸转换 */
 const convertForPattern = async (imageUrl) => {
   const resolved = resolveMediaUrl(imageUrl)
   patternConverting.value = true
@@ -634,8 +632,7 @@ const convertForPattern = async (imageUrl) => {
         body: JSON.stringify({
           imageUrl: resolved,
           gridSize: patternGridSize.value,
-          maxColors: patternMaxColors.value,
-          options: { edgeEnhance: true, denoise: true, brightnessBoost: true },
+          maxColors: 0, // 不限色数，服务端统一 MARD 全色（291 色）
         }),
       })
       const result = await response.json().catch(() => null)
@@ -656,12 +653,7 @@ const convertForPattern = async (imageUrl) => {
         gridHeight: p.gridHeight,
       }
     } else {
-      patternResult.value = await convertImageToPindou(resolved, patternGridSize.value, {
-        edgeEnhance: true,
-        denoise: true,
-        brightnessBoost: true,
-        maxColors: patternMaxColors.value,
-      })
+      patternResult.value = await convertImageToPindou(resolved, patternGridSize.value)
     }
   } catch (error) {
     console.error('图纸转换失败:', error)
@@ -671,15 +663,15 @@ const convertForPattern = async (imageUrl) => {
   }
 }
 
-/** 图纸渲染为 PNG dataURL（保存/发布用） */
-const renderPatternImage = (result) => {
+/** 图纸渲染为 PNG dataURL（保存/发布用），style: 'blueprint'|'pixel' */
+const renderPatternImage = (result, style = 'blueprint') => {
   const canvas = document.createElement('canvas')
-  drawPatternToCanvas(canvas, result)
+  drawPatternToCanvas(canvas, result, { style })
   return canvas.toDataURL('image/png')
 }
 
 /** 保存图纸到「我的图纸」 */
-const savePatternDesign = async (result) => {
+const savePatternDesign = async (result, style = 'blueprint') => {
   if (!result) return
   const token = getAuthToken()
   if (!token) {
@@ -694,14 +686,14 @@ const savePatternDesign = async (result) => {
       gridWidth: result.gridWidth,
       gridHeight: result.gridHeight,
       gridSize: patternGridSize.value,
-      maxColors: patternMaxColors.value,
+      maxColors: 0, // 不限制色数，统一使用 MARD 全色（291 色）
       pixels: serializePixels(result.pixels),
       palette: result.colorPalette,
       totalPixels: result.totalPixels,
       colorCount: result.colorCount,
       similarity: result.similarity,
       estimatedTime: result.estimatedTime,
-      previewImage: renderPatternImage(result),
+      previewImage: renderPatternImage(result, style),
     })
     if (res.code === 200) {
       ElMessage.success('图纸已保存到「我的图纸」~')
@@ -716,10 +708,10 @@ const savePatternDesign = async (result) => {
 }
 
 /** 一键发布为笔记 */
-const publishPatternDesign = (result) => {
+const publishPatternDesign = (result, style = 'blueprint') => {
   if (!result) return
   const canvas = document.createElement('canvas')
-  drawPatternToCanvas(canvas, result)
+  drawPatternToCanvas(canvas, result, { style })
   localStorage.setItem('pindouPublishImage', canvas.toDataURL('image/png'))
   router.push('/publish')
 }
@@ -858,13 +850,6 @@ const publishPatternDesign = (result) => {
             网格尺寸
             <select v-model="patternGridSize" :disabled="patternConverting" @change="convertForPattern(patternSourceImage)">
               <option v-for="s in PATTERN_GRID_OPTIONS" :key="s" :value="s">{{ s }}×{{ s }}</option>
-            </select>
-          </label>
-          <label>
-            颜色数量
-            <select v-model="patternMaxColors" :disabled="patternConverting" @change="convertForPattern(patternSourceImage)">
-              <option :value="0">不限制</option>
-              <option v-for="c in PATTERN_COLOR_OPTIONS" :key="c" :value="c">{{ c }}色</option>
             </select>
           </label>
           <span class="pattern-engine-tip">
