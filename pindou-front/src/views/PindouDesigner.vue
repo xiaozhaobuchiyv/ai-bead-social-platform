@@ -493,4 +493,48 @@ const publishDesign = (result, style = 'blueprint') => {
     transform: translateY(0);
   }
 }
+
+/* 手机端：图纸生成页自适应 */
+@media (max-width: 768px) {
+  .designer-content {
+    padding: 12px;
+  }
+
+  .upload-section {
+    padding: 0;
+  }
+
+  .options {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .option-group {
+    width: 100%;
+  }
+
+  .grid-select {
+    width: 100%;
+  }
+
+  .generate-btn {
+    width: 100%;
+  }
+
+  .upload-area {
+    padding: 24px 16px;
+  }
+
+  .designer-header {
+    padding: 14px 16px;
+  }
+
+  .designer-header h2 {
+    font-size: 18px;
+  }
+
+  .designer-header p {
+    font-size: 13px;
+  }
+}
 </style>

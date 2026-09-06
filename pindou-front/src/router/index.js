@@ -87,6 +87,8 @@ router.beforeEach((to, from, next) => {
 
   if (needLogin && !store.isLoggedIn) {
     store.openLogin()
+    // 通过 window 事件唤起登录卡片（LoginCard 监听的是该事件；仅改 store 不会弹出）
+    window.dispatchEvent(new Event('showLoginModal'))
     localStorage.setItem('redirectAfterLogin', to.fullPath)
     next('/')
     return

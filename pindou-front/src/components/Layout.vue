@@ -3,6 +3,7 @@ import SideBar from '@/components/SideBar.vue'
 import FeedbackDialog from '@/components/FeedbackDialog.vue'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import { useRouteProgress } from '@/composables/useRouteProgress'
 
 // 顶部路由加载进度条（懒加载 chunk 下载期间给出即时反馈）
@@ -10,6 +11,7 @@ const routeLoading = useRouteProgress()
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const searchContent = ref('')
 const searchHistory = ref([])
 const showHistory = ref(false)
@@ -31,6 +33,8 @@ const logout = () => {
   localStorage.removeItem('userInfo')
   window.location.reload()
 }
+
+const openLogin = () => window.dispatchEvent(new Event('showLoginModal'))
 
 // 移动端底部导航项（图标为全局注册的 Element Plus 图标名）
 const bottomNav = [
@@ -164,6 +168,7 @@ onMounted(() => {
             </transition>
           </div>
           <span class="feedback-link" title="意见反馈 / Bug 上报" @click="feedbackVisible = true">Bug反馈</span>
+          <span v-if="!userStore.isLoggedIn" class="header-login-btn" @click="openLogin">登录</span>
         </div>
       </el-header>
       <el-main class="main-view">
@@ -255,6 +260,19 @@ onMounted(() => {
     cursor: pointer;
     padding: 6px 8px;
     transition: color 0.18s ease;
+
+    &:hover {
+      color: #2ec4b5;
+    }
+  }
+
+  /* 顶部“登录”文字入口（未登录且手机端显示；桌面用侧边栏登录） */
+  .header-login-btn {
+    display: none;
+    font-size: 13px;
+    color: #0f766e;
+    cursor: pointer;
+    padding: 6px 8px;
 
     &:hover {
       color: #2ec4b5;
@@ -556,6 +574,10 @@ onMounted(() => {
       top: auto;
       align-self: flex-end;
       padding: 0 2px;
+    }
+
+    .header-login-btn {
+      display: inline-block;
     }
   }
 
