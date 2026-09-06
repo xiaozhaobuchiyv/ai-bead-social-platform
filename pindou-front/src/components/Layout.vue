@@ -15,23 +15,40 @@ const searchHistory = ref([])
 const showHistory = ref(false)
 const historyStorageKey = 'pindou-search-history'
 const feedbackVisible = ref(false)
-const menuOpen = ref(false) // 移动端侧边抽屉
+const moreSheetOpen = ref(false) // 移动端“更多”底部面板
+const isLoggedIn = computed(() => !!localStorage.getItem('token'))
 
-// 路由切换时自动收起抽屉
+// 路由切换时自动收起“更多”面板
 watch(
   () => route.path,
   () => {
-    menuOpen.value = false
+    moreSheetOpen.value = false
   }
 )
 
+const logout = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('userInfo')
+  window.location.reload()
+}
+
 // 移动端底部导航项（图标为全局注册的 Element Plus 图标名）
 const bottomNav = [
-  { path: '/', label: '首页', icon: 'HomeFilled' },
-  { path: '/pine-xiaodou', label: '拼小豆', icon: 'ChatDotRound' },
-  { path: '/publish', label: '发布', icon: 'Promotion' },
-  { path: '/message', label: '消息', icon: 'Bell' },
+  { key: 'home', path: '/', label: '首页', icon: 'HomeFilled' },
+  { key: 'pine', path: '/pine-xiaodou', label: '拼小豆', icon: 'ChatDotRound' },
+  { key: 'publish', path: '/publish', label: '发布', icon: 'Promotion' },
+  { key: 'message', path: '/message', label: '消息', icon: 'Bell' },
+  { key: 'more', label: '更多', icon: 'More' },
+]
+
+// “更多”面板中的其余功能
+const moreItems = [
   { path: '/user', label: '我的', icon: 'User' },
+  { path: '/designer', label: '图纸转换', icon: 'Switch' },
+  { path: '/designs', label: '我的图纸', icon: 'Picture' },
+  { path: '/draft', label: '草稿', icon: 'Edit' },
+  { path: '/notice', label: '通知', icon: 'BellFilled' },
+  { path: '/collection', label: '收藏', icon: 'Star' },
 ]
 
 const showHeader = computed(() => route.meta?.showHeader !== false)
@@ -104,10 +121,9 @@ onMounted(() => {
     <div v-show="routeLoading" class="route-progress" aria-hidden="true">
       <span class="route-progress-bar"></span>
     </div>
-    <div class="sidebar-wrap" :class="{ open: menuOpen }"><SideBar /></div>
+    <div class="sidebar-wrap"><SideBar /></div>
     <div class="main-content">
       <el-header v-if="showHeader">
-        <button class="menu-btn" aria-label="菜单" @click="menuOpen = true"><el-icon :size="22"><Menu /></el-icon></button>
         <div v-if="showSearch" class="header-container">
           <div class="search-wrap">
             <div class="search-shell">
@@ -159,17 +175,35 @@ onMounted(() => {
       </el-main>
     </div>
 
-    <!-- 移动端侧边栏抽屉遮罩 -->
-    <div v-if="menuOpen" class="drawer-mask" @click="menuOpen = false"></div>
-
-    <!-- 移动端底部导航（≤768 显示，替代收起后的侧边栏） -->
+    <!-- 移动端底部导航（含“更多”面板，导航都在页面下端） -->
     <nav class="mobile-bottom-nav">
-      <router-link v-for="item in bottomNav" :key="item.path" :to="item.path" class="mb-item"
-        :class="{ active: route.path === item.path || (item.path === '/' && (route.path === '/' || !route.path)) }">
+      <router-link v-for="item in bottomNav" :key="item.key" :to="item.path || '#'" class="mb-item"
+        :class="{ active: item.key !== 'more' && (route.path === item.path || (item.path === '/' && (route.path === '/' || !route.path))) }"
+        @click="item.key === 'more' && (moreSheetOpen = true)">
         <el-icon :size="20"><component :is="item.icon" /></el-icon>
         <span class="mb-label">{{ item.label }}</span>
       </router-link>
     </nav>
+
+    <!-- 更多功能：底部弹出面板（移动端） -->
+    <div v-if="moreSheetOpen" class="more-sheet-mask" @click="moreSheetOpen = false"></div>
+    <div class="more-sheet" :class="{ open: moreSheetOpen }">
+      <div class="more-sheet-handle"></div>
+      <div class="more-sheet-grid">
+        <router-link v-for="f in moreItems" :key="f.path" :to="f.path" class="more-item" @click="moreSheetOpen = false">
+          <div class="more-icon"><el-icon :size="22"><component :is="f.icon" /></el-icon></div>
+          <span class="more-label">{{ f.label }}</span>
+        </router-link>
+        <a class="more-item" @click.prevent="feedbackVisible = true; moreSheetOpen = false">
+          <div class="more-icon"><el-icon :size="22"><ChatDotRound /></el-icon></div>
+          <span class="more-label">意见反馈</span>
+        </a>
+        <a v-if="isLoggedIn" class="more-item" @click.prevent="logout">
+          <div class="more-icon"><el-icon :size="22"><SwitchButton /></el-icon></div>
+          <span class="more-label">退出登录</span>
+        </a>
+      </div>
+    </div>
 
     <FeedbackDialog v-model="feedbackVisible" />
   </div>
@@ -483,69 +517,34 @@ onMounted(() => {
   }
 }
 
-/* ===== 移动端适配：汉堡菜单抽屉 + 允许页面滚动 ===== */
+/* ===== 移动端适配：底部导航 + “更多”面板（导航统一在页面下端） ===== */
 .mobile-bottom-nav {
   display: none;
 }
 
-.menu-btn {
+.more-sheet {
   display: none;
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: none;
-  background: transparent;
-  color: #2ec4b5;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 8px;
-  z-index: 60;
-}
-
-.drawer-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.38);
-  z-index: 1150;
 }
 
 @media (max-width: 768px) {
-  .menu-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
+  /* 手机端隐藏左侧侧边栏，用底部导航替代 */
   .sidebar-wrap {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 1200;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    will-change: transform;
-
-    &.open {
-      transform: translateX(0);
-      box-shadow: 8px 0 30px rgba(0, 0, 0, 0.12);
-    }
+    display: none !important;
   }
 
   .main-content {
     margin-left: 0 !important;
     padding-bottom: 64px;
-    overflow: visible;
+    overflow-x: hidden;
   }
 
   .main-view {
-    overflow: visible;
+    overflow-x: hidden;
   }
 
   .el-header {
     .header-container {
-      width: calc(100vw - 60px);
+      width: calc(100vw - 48px);
       flex-direction: column;
       gap: 6px;
     }
@@ -595,6 +594,69 @@ onMounted(() => {
 
   .mb-label {
     line-height: 1;
+  }
+
+  /* 更多：底部弹出面板 */
+  .more-sheet {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1300;
+    background: #fff;
+    border-radius: 18px 18px 0 0;
+    transform: translateY(110%);
+    transition: transform 0.25s ease;
+    padding: 8px 16px 18px;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
+
+    &.open {
+      transform: translateY(0);
+    }
+  }
+
+  .more-sheet-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1290;
+  }
+
+  .more-sheet-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 99px;
+    background: #d8dee6;
+    margin: 6px auto 12px;
+  }
+
+  .more-sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px 8px;
+  }
+
+  .more-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: #333;
+    text-decoration: none;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .more-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+    background: #f2fdfb;
+    color: #2ec4b5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 </style>
