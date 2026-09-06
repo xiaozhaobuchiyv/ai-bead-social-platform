@@ -465,5 +465,22 @@ const submitForm = async () => {
       font-size: 13px;
     }
   }
+
+  /* 移动端：去掉左侧图片区，仅保留表单，卡片贴边 */
+  @media (max-width: 768px) {
+    .card-box {
+      width: 92vw;
+      min-height: auto;
+    }
+
+    .card-left {
+      display: none !important;
+    }
+
+    .card-right {
+      width: 100% !important;
+      padding: 28px 22px;
+    }
+  }
 }
 </style>

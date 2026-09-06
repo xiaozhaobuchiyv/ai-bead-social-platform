@@ -16,6 +16,15 @@ const showHistory = ref(false)
 const historyStorageKey = 'pindou-search-history'
 const feedbackVisible = ref(false)
 
+// 移动端底部导航项（图标为全局注册的 Element Plus 图标名）
+const bottomNav = [
+  { path: '/', label: '首页', icon: 'HomeFilled' },
+  { path: '/pine-xiaodou', label: '拼小豆', icon: 'ChatDotRound' },
+  { path: '/publish', label: '发布', icon: 'Promotion' },
+  { path: '/message', label: '消息', icon: 'Bell' },
+  { path: '/user', label: '我的', icon: 'User' },
+]
+
 const showHeader = computed(() => route.meta?.showHeader !== false)
 const showSearch = computed(() => route.path === '/')
 
@@ -86,7 +95,7 @@ onMounted(() => {
     <div v-show="routeLoading" class="route-progress" aria-hidden="true">
       <span class="route-progress-bar"></span>
     </div>
-    <SideBar />
+    <div class="sidebar-wrap"><SideBar /></div>
     <div class="main-content">
       <el-header v-if="showHeader">
         <div v-if="showSearch" class="header-container">
@@ -139,6 +148,16 @@ onMounted(() => {
         </router-view>
       </el-main>
     </div>
+
+    <!-- 移动端底部导航（≤768 显示，替代收起后的侧边栏） -->
+    <nav class="mobile-bottom-nav">
+      <router-link v-for="item in bottomNav" :key="item.path" :to="item.path" class="mb-item"
+        :class="{ active: route.path === item.path || (item.path === '/' && (route.path === '/' || !route.path)) }">
+        <el-icon :size="20"><component :is="item.icon" /></el-icon>
+        <span class="mb-label">{{ item.label }}</span>
+      </router-link>
+    </nav>
+
     <FeedbackDialog v-model="feedbackVisible" />
   </div>
 </template>
@@ -448,6 +467,59 @@ onMounted(() => {
   }
   100% {
     transform: translateX(280%);
+  }
+}
+
+/* ===== 移动端适配：收起侧边栏 + 底部导航 ===== */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar-wrap {
+    display: none !important;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    padding-bottom: 64px;
+  }
+
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    height: 56px;
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid #eceef1;
+    backdrop-filter: blur(10px);
+    align-items: center;
+    justify-content: space-around;
+    box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .mb-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: 1;
+    height: 100%;
+    color: #98a0a8;
+    text-decoration: none;
+    font-size: 10px;
+
+    &.active {
+      color: #2ec4b5;
+    }
+  }
+
+  .mb-label {
+    line-height: 1;
   }
 }
 </style>

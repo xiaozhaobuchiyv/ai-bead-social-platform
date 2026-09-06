@@ -63,3 +63,30 @@ body {
 .sk-fallback-bg {
   background: linear-gradient(180deg, #f6f7f9 0%, #eef1f4 100%);
 }
+
+/* ===== 移动端基础：防横向溢出 & 弹窗/图片自适应 ===== */
+body {
+  overflow-x: hidden;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 768px) {
+  html,
+  body {
+    font-size: 14px;
+  }
+
+  .el-dialog {
+    width: 92% !important;
+  }
+
+  .el-message,
+  .el-message-box {
+    width: auto;
+  }
+}
