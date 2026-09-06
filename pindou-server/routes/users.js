@@ -41,6 +41,12 @@ router.post('/edit', requireAuth, controller.edit)
 // 修改密码
 router.post('/changepwd', requireAuth, controller.changePwd)
 
+// 找回密码：发送验证码（开发环境验证码随响应返回）
+router.post('/findpwd/code', validate({ phone: 'required' }), controller.sendResetCode)
+
+// 找回密码：校验验证码并重置密码
+router.post('/findpwd/reset', validate({ phone: 'required', code: 'required', newPassword: 'required' }), controller.resetPassword)
+
 // 修改签名
 router.post('/signature', requireAuth, controller.signature)
 

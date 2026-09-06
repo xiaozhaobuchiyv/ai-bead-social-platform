@@ -158,6 +158,55 @@ async function updateAvatar(userId, filename) {
   return avatarUrl
 }
 
+const assertPhone = (phone) => {
+  const p = String(phone ?? '').trim()
+  if (!PHONE_REG.test(p)) throw new HttpError(400, '账号需为 11 位手机号（1 开头，第二位 3-9）')
+  return p
+}
+
+/** 发送找回密码验证码：仅对已注册手机号；非生产环境直接把验证码返回（便于演示/自测） */
+async function sendResetCode(phone) {
+  const p = assertPhone(phone)
+  const [rows] = await pool.query('SELECT id FROM users WHERE username = ?', [p])
+  if (!rows.length) throw new HttpError(400, '该手机号尚未注册，请先登录注册')
+
+  const code = String(Math.floor(100000 + Math.random() * 900000))
+  await pool.query('DELETE FROM password_reset_codes WHERE phone = ?', [p])
+  // 过期时间用数据库本地时间的 NOW()+5min 计算，避免 JS(UTC) 与 MySQL 时区不一致
+  await pool.query(
+    'INSERT INTO password_reset_codes(phone, code, expires_at) VALUES(?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))',
+    [p, code]
+  )
+
+  // 生产环境：接入短信服务（腾讯云 SMS）在此处调用，并把验证码通过短信下发。
+  // 开发环境直接返回验证码，方便本地演示与联调。
+  if (config.env !== 'production') return { devCode: code }
+  return { devCode: null }
+}
+
+/** 校验验证码并重置密码 */
+async function resetPassword(phone, code, newPassword) {
+  const p = assertPhone(phone)
+  const nc = String(code ?? '').trim()
+  if (!nc) throw new HttpError(400, '请输入验证码')
+  const np = String(newPassword ?? '')
+  if (np.length < 6) throw new HttpError(400, '新密码至少 6 位')
+
+  const [rows] = await pool.query(
+    `SELECT id, code FROM password_reset_codes
+     WHERE phone = ? AND used = 0 AND expires_at > NOW()
+     ORDER BY id DESC LIMIT 1`,
+    [p]
+  )
+  if (!rows.length) throw new HttpError(400, '验证码无效或已过期，请重新获取')
+  if (rows[0].code !== nc) throw new HttpError(400, '验证码错误')
+
+  const hash = bcrypt.hashSync(np, 10)
+  await pool.query('UPDATE users SET password = ? WHERE username = ?', [hash, p])
+  await pool.query('UPDATE password_reset_codes SET used = 1 WHERE id = ?', [rows[0].id])
+  await pool.query('DELETE FROM password_reset_codes WHERE phone = ?', [p])
+}
+
 module.exports = {
   login,
   getProfile,
@@ -166,4 +215,6 @@ module.exports = {
   changePassword,
   updateAvatar,
   invalidateProfile,
+  sendResetCode,
+  resetPassword,
 }

@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='意见反馈/Bug上报表';
 
 -- ---------------------------------------------------------------
+-- 找回密码验证码表
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS password_reset_codes (
+  id          INT PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
+  phone       VARCHAR(20)  NOT NULL COMMENT '手机号',
+  code        VARCHAR(8)   NOT NULL COMMENT '6位验证码',
+  used        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否已使用',
+  expires_at  DATETIME     NOT NULL COMMENT '过期时间(5分钟)',
+  create_time DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  KEY idx_prc_phone (phone, used)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='找回密码验证码';
+
+-- ---------------------------------------------------------------
 -- 点赞/收藏动作表
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS actions (

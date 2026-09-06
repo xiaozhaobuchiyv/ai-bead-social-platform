@@ -59,4 +59,26 @@ const avatar = (req, res, next) => {
   })
 }
 
-module.exports = { login, getInfo, getOther, edit, changePwd, signature, avatar }
+// 发送找回密码验证码（开发环境返回验证码便于演示）
+const sendResetCode = asyncHandler(async (req, res) => {
+  const { devCode } = await userService.sendResetCode(req.body.phone)
+  ok(res, { devCode }, devCode ? '验证码已发送（开发环境）' : '验证码已发送')
+})
+
+// 校验验证码并重置密码
+const resetPassword = asyncHandler(async (req, res) => {
+  await userService.resetPassword(req.body.phone, req.body.code, req.body.newPassword)
+  ok(res, null, '密码已重置，请使用新密码登录')
+})
+
+module.exports = {
+  login,
+  getInfo,
+  getOther,
+  edit,
+  changePwd,
+  signature,
+  avatar,
+  sendResetCode,
+  resetPassword,
+}
