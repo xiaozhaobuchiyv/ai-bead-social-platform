@@ -579,4 +579,48 @@ defineExpose({ drawGrid, updateThumbnail })
     justify-content: center;
   }
 }
+
+/* ===== 手机端：图纸查看器自适应（图纸转换 / 我的图纸预览） ===== */
+@media (max-width: 768px) {
+  .pindou-pattern-viewer {
+    padding: 8px;
+  }
+
+  .compare-view {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .result-image .result-img {
+    max-width: 100%;
+  }
+
+  .stats {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 16px;
+  }
+
+  .color-list {
+    gap: 8px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .action-btn {
+    width: 100%;
+  }
+
+  .grid-wrapper {
+    min-height: 260px;
+    max-height: 60vh;
+  }
+}
 </style>

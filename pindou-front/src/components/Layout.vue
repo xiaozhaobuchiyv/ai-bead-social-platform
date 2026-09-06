@@ -17,16 +17,7 @@ const searchHistory = ref([])
 const showHistory = ref(false)
 const historyStorageKey = 'pindou-search-history'
 const feedbackVisible = ref(false)
-const moreSheetOpen = ref(false) // 移动端“更多”底部面板
 const isLoggedIn = computed(() => !!localStorage.getItem('token'))
-
-// 路由切换时自动收起“更多”面板
-watch(
-  () => route.path,
-  () => {
-    moreSheetOpen.value = false
-  }
-)
 
 const logout = () => {
   localStorage.removeItem('token')
@@ -36,23 +27,17 @@ const logout = () => {
 
 const openLogin = () => window.dispatchEvent(new Event('showLoginModal'))
 
-// 移动端底部导航项（图标为全局注册的 Element Plus 图标名）
-const bottomNav = [
+// 移动端底部导航：两排全部入口（图标为全局注册的 Element Plus 图标名）
+const mobileNav = [
   { key: 'home', path: '/', label: '首页', icon: 'HomeFilled' },
   { key: 'pine', path: '/pine-xiaodou', label: '拼小豆', icon: 'ChatDotRound' },
   { key: 'publish', path: '/publish', label: '发布', icon: 'Promotion' },
   { key: 'message', path: '/message', label: '消息', icon: 'Bell' },
-  { key: 'more', label: '更多', icon: 'More' },
-]
-
-// “更多”面板中的其余功能
-const moreItems = [
-  { path: '/user', label: '我的', icon: 'User' },
-  { path: '/designer', label: '图纸转换', icon: 'Switch' },
-  { path: '/designs', label: '我的图纸', icon: 'Picture' },
-  { path: '/draft', label: '草稿', icon: 'Edit' },
-  { path: '/notice', label: '通知', icon: 'BellFilled' },
-  { path: '/collection', label: '收藏', icon: 'Star' },
+  { key: 'notice', path: '/notice', label: '通知', icon: 'BellFilled' },
+  { key: 'designer', path: '/designer', label: '图纸转换', icon: 'Switch' },
+  { key: 'designs', path: '/designs', label: '我的图纸', icon: 'Picture' },
+  { key: 'draft', path: '/draft', label: '草稿', icon: 'Edit' },
+  { key: 'user', path: '/user', label: '我的', icon: 'User' },
 ]
 
 const showHeader = computed(() => route.meta?.showHeader !== false)
@@ -180,35 +165,18 @@ onMounted(() => {
       </el-main>
     </div>
 
-    <!-- 移动端底部导航（含“更多”面板，导航都在页面下端） -->
+    <!-- 移动端底部导航：两排展示全部入口，不折叠 -->
     <nav class="mobile-bottom-nav">
-      <router-link v-for="item in bottomNav" :key="item.key" :to="item.path || '#'" class="mb-item"
-        :class="{ active: item.key !== 'more' && (route.path === item.path || (item.path === '/' && (route.path === '/' || !route.path))) }"
-        @click="item.key === 'more' && (moreSheetOpen = true)">
-        <el-icon :size="20"><component :is="item.icon" /></el-icon>
-        <span class="mb-label">{{ item.label }}</span>
+      <router-link v-for="it in mobileNav" :key="it.key" :to="it.path" class="mb-item"
+        :class="{ active: route.path === it.path || (it.path === '/' && (route.path === '/' || !route.path)) }">
+        <el-icon :size="20"><component :is="it.icon" /></el-icon>
+        <span class="mb-label">{{ it.label }}</span>
       </router-link>
+      <a class="mb-item" @click.prevent="userStore.isLoggedIn ? logout() : openLogin()">
+        <el-icon :size="20"><component :is="userStore.isLoggedIn ? 'SwitchButton' : 'User'" /></el-icon>
+        <span class="mb-label">{{ userStore.isLoggedIn ? '退出' : '登录' }}</span>
+      </a>
     </nav>
-
-    <!-- 更多功能：底部弹出面板（移动端） -->
-    <div v-if="moreSheetOpen" class="more-sheet-mask" @click="moreSheetOpen = false"></div>
-    <div class="more-sheet" :class="{ open: moreSheetOpen }">
-      <div class="more-sheet-handle"></div>
-      <div class="more-sheet-grid">
-        <router-link v-for="f in moreItems" :key="f.path" :to="f.path" class="more-item" @click="moreSheetOpen = false">
-          <div class="more-icon"><el-icon :size="22"><component :is="f.icon" /></el-icon></div>
-          <span class="more-label">{{ f.label }}</span>
-        </router-link>
-        <a class="more-item" @click.prevent="feedbackVisible = true; moreSheetOpen = false">
-          <div class="more-icon"><el-icon :size="22"><ChatDotRound /></el-icon></div>
-          <span class="more-label">意见反馈</span>
-        </a>
-        <a v-if="isLoggedIn" class="more-item" @click.prevent="logout">
-          <div class="more-icon"><el-icon :size="22"><SwitchButton /></el-icon></div>
-          <span class="more-label">退出登录</span>
-        </a>
-      </div>
-    </div>
 
     <FeedbackDialog v-model="feedbackVisible" />
   </div>
@@ -540,10 +508,6 @@ onMounted(() => {
   display: none;
 }
 
-.more-sheet {
-  display: none;
-}
-
 @media (max-width: 768px) {
   /* 手机端隐藏左侧侧边栏，用底部导航替代 */
   .sidebar-wrap {
@@ -582,18 +546,17 @@ onMounted(() => {
   }
 
   .mobile-bottom-nav {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: 54px;
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 1000;
-    height: 56px;
-    background: rgba(255, 255, 255, 0.96);
+    background: rgba(255, 255, 255, 0.97);
     border-top: 1px solid #eceef1;
     backdrop-filter: blur(10px);
-    align-items: center;
-    justify-content: space-around;
     box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.06);
   }
 
@@ -602,9 +565,7 @@ onMounted(() => {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    flex: 1;
-    height: 100%;
+    gap: 3px;
     color: #98a0a8;
     text-decoration: none;
     font-size: 10px;
@@ -616,69 +577,6 @@ onMounted(() => {
 
   .mb-label {
     line-height: 1;
-  }
-
-  /* 更多：底部弹出面板 */
-  .more-sheet {
-    display: block;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1300;
-    background: #fff;
-    border-radius: 18px 18px 0 0;
-    transform: translateY(110%);
-    transition: transform 0.25s ease;
-    padding: 8px 16px 18px;
-    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
-
-    &.open {
-      transform: translateY(0);
-    }
-  }
-
-  .more-sheet-mask {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 1290;
-  }
-
-  .more-sheet-handle {
-    width: 40px;
-    height: 4px;
-    border-radius: 99px;
-    background: #d8dee6;
-    margin: 6px auto 12px;
-  }
-
-  .more-sheet-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 14px 8px;
-  }
-
-  .more-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    color: #333;
-    text-decoration: none;
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  .more-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 16px;
-    background: #f2fdfb;
-    color: #2ec4b5;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 }
 </style>
