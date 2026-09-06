@@ -15,6 +15,15 @@ const searchHistory = ref([])
 const showHistory = ref(false)
 const historyStorageKey = 'pindou-search-history'
 const feedbackVisible = ref(false)
+const menuOpen = ref(false) // 移动端侧边抽屉
+
+// 路由切换时自动收起抽屉
+watch(
+  () => route.path,
+  () => {
+    menuOpen.value = false
+  }
+)
 
 // 移动端底部导航项（图标为全局注册的 Element Plus 图标名）
 const bottomNav = [
@@ -95,9 +104,10 @@ onMounted(() => {
     <div v-show="routeLoading" class="route-progress" aria-hidden="true">
       <span class="route-progress-bar"></span>
     </div>
-    <div class="sidebar-wrap"><SideBar /></div>
+    <div class="sidebar-wrap" :class="{ open: menuOpen }"><SideBar /></div>
     <div class="main-content">
       <el-header v-if="showHeader">
+        <button class="menu-btn" aria-label="菜单" @click="menuOpen = true"><el-icon :size="22"><Menu /></el-icon></button>
         <div v-if="showSearch" class="header-container">
           <div class="search-wrap">
             <div class="search-shell">
@@ -148,6 +158,9 @@ onMounted(() => {
         </router-view>
       </el-main>
     </div>
+
+    <!-- 移动端侧边栏抽屉遮罩 -->
+    <div v-if="menuOpen" class="drawer-mask" @click="menuOpen = false"></div>
 
     <!-- 移动端底部导航（≤768 显示，替代收起后的侧边栏） -->
     <nav class="mobile-bottom-nav">
@@ -470,19 +483,81 @@ onMounted(() => {
   }
 }
 
-/* ===== 移动端适配：收起侧边栏 + 底部导航 ===== */
+/* ===== 移动端适配：汉堡菜单抽屉 + 允许页面滚动 ===== */
 .mobile-bottom-nav {
   display: none;
 }
 
+.menu-btn {
+  display: none;
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: #2ec4b5;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  z-index: 60;
+}
+
+.drawer-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+  z-index: 1150;
+}
+
 @media (max-width: 768px) {
+  .menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .sidebar-wrap {
-    display: none !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1200;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    will-change: transform;
+
+    &.open {
+      transform: translateX(0);
+      box-shadow: 8px 0 30px rgba(0, 0, 0, 0.12);
+    }
   }
 
   .main-content {
     margin-left: 0 !important;
     padding-bottom: 64px;
+    overflow: visible;
+  }
+
+  .main-view {
+    overflow: visible;
+  }
+
+  .el-header {
+    .header-container {
+      width: calc(100vw - 60px);
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .feedback-link {
+      position: static;
+      transform: none;
+      right: auto;
+      top: auto;
+      align-self: flex-end;
+      padding: 0 2px;
+    }
   }
 
   .mobile-bottom-nav {

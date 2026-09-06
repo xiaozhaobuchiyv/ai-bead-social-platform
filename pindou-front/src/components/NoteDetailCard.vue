@@ -2176,6 +2176,26 @@ watch(() => [props.show, props.initialCommentId], ([isShow, initialCommentId]) =
     flex-direction: column;
   }
 
+  .detail-modal {
+    width: 100%;
+    height: 92vh;
+    max-width: 100%;
+    border-radius: 0;
+  }
+
+  .detail-modal-overlay {
+    z-index: 2000;
+  }
+
+  .detail-content {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .detail-right {
+    overflow-y: auto;
+  }
+
   .detail-left {
     width: 100%;
     height: 40%;
