@@ -121,11 +121,7 @@ export const actionApi = {
 
 // 找回密码相关接口
 export const findpwdApi = {
-  // 发送验证码（开发环境返回 devCode）
-  sendCode: (phone) => {
-    return request.post('/users/findpwd/code', { phone })
-  },
-  // 校验验证码并重置密码
+  // 站内私人口令 + 新密码 重置密码（无短信依赖）
   reset: (data) => {
     return request.post('/users/findpwd/reset', data)
   }

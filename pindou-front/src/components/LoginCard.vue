@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, computed, onBeforeUnmount } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { userApi, findpwdApi } from '@/api/index.js'
 import { formatAvatar } from '@/utils/media'
@@ -21,16 +21,13 @@ const loading = ref(false)
 // 账号仅允许大陆手机号：1 开头，第二位 3-9，共 11 位（与后端保持一致）
 const PHONE_REG = /^1[3-9]\d{9}$/
 
-// ---------- 忘记密码 ----------
+// ---------- 找回密码（无短信：使用部署时设置的站内私人口令） ----------
 const mode = ref('login') // 'login' | 'forgot'
 const fPhone = ref('')
 const fCode = ref('')
 const fPwd = ref('')
 const fPwd2 = ref('')
-const codeCooldown = ref(0)
-const codeSending = ref(false)
 const resetting = ref(false)
-let cdTimer = null
 
 const switchMode = (m) => {
   mode.value = m
@@ -41,42 +38,7 @@ const canReset = computed(
   () => PHONE_REG.test(fPhone.value.trim()) && fCode.value.trim().length >= 4 && fPwd.value.length >= 6 && fPwd.value === fPwd2.value && !resetting.value
 )
 
-// 发送验证码（60s 冷却；开发环境后端会返回验证码，自动填入并提示）
-const sendCode = async () => {
-  if (codeCooldown.value > 0) return
-  if (!PHONE_REG.test(fPhone.value.trim())) {
-    showToastMessage('请先输入正确的 11 位手机号')
-    return
-  }
-  codeSending.value = true
-  try {
-    const res = await findpwdApi.sendCode(fPhone.value.trim())
-    if (res.code === 200) {
-      if (res.data?.devCode) {
-        fCode.value = res.data.devCode
-        showToastMessage(`验证码已发送（演示环境：${res.data.devCode}）`, 'success')
-      } else {
-        showToastMessage('验证码已发送，请注意查收', 'success')
-      }
-      codeCooldown.value = 60
-      cdTimer = setInterval(() => {
-        codeCooldown.value -= 1
-        if (codeCooldown.value <= 0) {
-          clearInterval(cdTimer)
-          cdTimer = null
-        }
-      }, 1000)
-    } else {
-      showToastMessage(res.msg || '验证码发送失败')
-    }
-  } catch (error) {
-    showToastMessage(error?.msg || error?.message || '验证码发送失败')
-  } finally {
-    codeSending.value = false
-  }
-}
-
-// 重置密码
+// 重置密码（需站内私人口令）
 const submitReset = async () => {
   if (!canReset.value) return
   resetting.value = true
@@ -99,10 +61,6 @@ const submitReset = async () => {
     resetting.value = false
   }
 }
-
-onBeforeUnmount(() => {
-  if (cdTimer) clearInterval(cdTimer)
-})
 
 // 弹窗提示状态
 const showToast = ref(false)
@@ -234,13 +192,8 @@ const submitForm = async () => {
             <el-form-item label="手机号">
               <el-input v-model="fPhone" placeholder="输入11位手机号" class="login-input" size="large" maxlength="11" />
             </el-form-item>
-            <el-form-item label="验证码">
-              <div class="code-row">
-                <el-input v-model="fCode" placeholder="6位验证码" class="login-input" size="large" maxlength="6" />
-                <el-button size="large" :disabled="codeCooldown > 0 || codeSending" @click="sendCode">
-                  {{ codeCooldown > 0 ? codeCooldown + 's' : '获取验证码' }}
-                </el-button>
-              </div>
+            <el-form-item label="找回口令">
+              <el-input v-model="fCode" placeholder="站内找回口令（站长设置的私人口令）" class="login-input" size="large" />
             </el-form-item>
             <el-form-item label="新密码">
               <el-input v-model="fPwd" type="password" placeholder="至少6位" class="login-input" size="large" show-password />
@@ -477,15 +430,6 @@ const submitForm = async () => {
       text-align: right;
       margin: -6px 0 8px;
       font-size: 13px;
-    }
-
-    .code-row {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      width: 100%;
-
-      .el-input { flex: 1; }
     }
   }
 }

@@ -10,7 +10,7 @@
 
 | 模块 | 说明 |
 |------|------|
-| 登录/注册 | **11 位手机号**作为账号（前后端正则校验），首次登录自动注册；数据库唯一约束防重；支持**忘记密码**（手机号+验证码，5 分钟有效，开发环境验证码直接返回便于演示） |
+| 登录/注册 | **11 位手机号**作为账号（前后端正则校验），首次登录自动注册；数据库唯一约束防重；支持**忘记密码**（手机号 + 站长私人口令 `PASSWORD_RESET_CODE`，无需短信） |
 | 首页瀑布流 | 多列瀑布流、无限加载、图片懒加载、游标分页、点赞/收藏乐观更新 |
 | 搜索 | 关键词搜索（标题/内容/分类/作者），服务端 `FULLTEXT(ngram)` + 游标分页 |
 | 作品隐藏 | 抖音式「隐藏」：隐藏后他人/游客不可见（详情 404、Feed/搜索/作者页消失），自己仍可在“我的笔记”查看并一键取消（免二次确认） |
@@ -77,7 +77,7 @@ docker compose up -d --build
 ## ⚙️ 关键环境变量
 
 - 后端 `pindou-server/.env`（模板见 `.env.example`）：
-  - `DB_*` / `JWT_SECRET` / `CACHE_DRIVER`(memory|redis) / `REDIS_*` / `CORS_ORIGIN` / `PUBLIC_BASE_URL` / `MAX_UPLOAD_SIZE_MB`
+  - `DB_*` / `JWT_SECRET` / `PASSWORD_RESET_CODE`（找回密码口令，可选） / `CACHE_DRIVER`(memory|redis) / `REDIS_*` / `CORS_ORIGIN` / `PUBLIC_BASE_URL` / `MAX_UPLOAD_SIZE_MB`
   - 托管 MySQL（Aiven 等）：补 `DB_PORT`（非 3306）+ `DB_SSL=require`（可加 `DB_SSL_CA=证书路径` 校验证书）
   - 托管 Redis（Upstash 等）：`CACHE_DRIVER=redis` + `REDIS_URL=rediss://…`（自动 TLS）+ `REDIS_DB=0`
   - 拼小豆 AI（**不配置即整站关闭**，前端进入显示“建设中”）：
@@ -109,7 +109,7 @@ ai-bead-social-platform/
 
 | 模块 | 接口 |
 |------|------|
-| 用户 | `POST /users/login`（手机号自动注册）、`GET /users/info`、`POST /users/edit`、`POST /users/changepwd`、`POST /users/findpwd/code`、`POST /users/findpwd/reset` |
+| 用户 | `POST /users/login`（手机号自动注册）、`GET /users/info`、`POST /users/edit`、`POST /users/changepwd`、`POST /users/findpwd/reset` |
 | 笔记 | `GET /notes/list`、`GET /notes/search?q=`、`GET /notes/detail/:id`、`POST /notes/publish`、`POST /notes/video-upload`、`POST /notes/hide/:id`、`POST /notes/unhide/:id` |
 | 互动 | `POST /action/toggle`、`/action/collections`、`/action/likes` |
 | 评论/关注/通知/私信 | `comment/*`、`follow/*`、`notice/*`、`messages/*` |

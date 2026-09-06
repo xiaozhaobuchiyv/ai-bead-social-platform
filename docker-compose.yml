@@ -55,6 +55,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-123456}
       DB_NAME: pindou
       JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      PASSWORD_RESET_CODE: ${PASSWORD_RESET_CODE:-}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       CACHE_DRIVER: redis
       REDIS_HOST: redis

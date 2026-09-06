@@ -99,6 +99,9 @@ const config = {
   cors: {
     origin: process.env.CORS_ORIGIN || '*',
   },
+
+  // 找回密码用的站内私人口令（无短信依赖；部署时设置，仅站长知晓）
+  passwordResetCode: process.env.PASSWORD_RESET_CODE || '',
 }
 
 module.exports = config
