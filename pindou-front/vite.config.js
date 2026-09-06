@@ -10,7 +10,8 @@ import path from 'path'
 export default defineConfig({
   plugins: [
     vue(),
-    vueDevTools(),
+    // 注意：vue-devtools 在生产构建（vite build）会显著拖慢甚至卡死，仅开发模式启用
+    ...(process.env.NODE_ENV === 'production' ? [] : [vueDevTools()]),
     AutoImport({
       resolvers: [ElementPlusResolver()],
     }),
