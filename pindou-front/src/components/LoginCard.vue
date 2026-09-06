@@ -171,7 +171,7 @@ const submitForm = async () => {
               <el-button type="primary" class="login-btn" @click="submitForm" :loading="loading">登录</el-button>
             </el-form-item>
             <div class="forgot-row">
-              <a class="link" href="#" @click.prevent="switchMode('forgot')">忘记密码？</a>
+              <a class="link link-gray" href="#" @click.prevent="switchMode('forgot')">忘记密码？</a>
             </div>
             <el-form-item>
               <el-checkbox v-model="checked" class="agree-checkbox">
@@ -187,8 +187,8 @@ const submitForm = async () => {
 
         <!-- 找回密码 -->
         <template v-else>
-          <h2 class="title">找回密码</h2>
-          <el-form label-position="top" class="login-form">
+          <h2 class="title gray-title">找回密码</h2>
+          <el-form label-position="top" class="login-form forgot-form">
             <el-form-item label="手机号">
               <el-input v-model="fPhone" placeholder="输入11位手机号" class="login-input" size="large" maxlength="11" />
             </el-form-item>
@@ -207,7 +207,7 @@ const submitForm = async () => {
               </el-button>
             </el-form-item>
           </el-form>
-          <p class="new-user"><a class="link" href="#" @click.prevent="switchMode('login')">返回登录</a></p>
+          <p class="new-user"><a class="back-login-link" href="#" @click.prevent="switchMode('login')">返回登录</a></p>
         </template>
       </div>
     </div>
@@ -259,7 +259,9 @@ const submitForm = async () => {
   .card-box {
     display: flex;
     width: 800px;
-    height: 500px;
+    min-height: 500px;
+    height: auto;
+    max-height: 92vh;
     background-color: #fff;
     border-radius: 10px;
     overflow: hidden;
@@ -319,8 +321,11 @@ const submitForm = async () => {
     display: flex;
     flex-direction: column;
     padding: 40px;
+    padding-bottom: 28px;
     box-sizing: border-box;
     position: relative;
+    overflow-y: auto;
+    max-height: 92vh;
 
     .close-btn {
       position: absolute;
@@ -353,8 +358,26 @@ const submitForm = async () => {
       color: #333;
     }
 
+    /* 找回密码标题：灰色 */
+    .gray-title {
+      color: #8a8f98;
+      margin-bottom: 18px;
+    }
+
+    /* 忘记密码？链接：灰色 */
+    .link-gray {
+      color: #98a0a8;
+    }
+
     .login-form {
       width: 100%;
+    }
+
+    /* 找回密码表单：字段间距略收紧 */
+    .forgot-form {
+      :deep(.el-form-item) {
+        margin-bottom: 12px;
+      }
     }
 
     .login-input {
@@ -424,6 +447,16 @@ const submitForm = async () => {
       font-size: 12px;
       color: #999;
       margin-top: auto;
+    }
+
+    /* 返回登录：纯主题色文字，无背景 */
+    .back-login-link {
+      color: #2ec4b5;
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
     }
 
     .forgot-row {
