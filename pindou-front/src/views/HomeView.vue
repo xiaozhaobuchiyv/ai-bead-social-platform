@@ -716,7 +716,7 @@ const handleLoginSuccess = async () => {
   .waterfall-item { margin-bottom: 8px; border-radius: 8px; }
   .item-content { padding: 8px; }
   .item-title { font-size: 14px; }
-  .item-desc { font-size: 13px; margin-bottom: 8px; }
+  .item-desc { font-size: 13px; -webkit-line-clamp: 1; margin-bottom: 6px; }
 }
 
 @media (max-width: 600px) {
