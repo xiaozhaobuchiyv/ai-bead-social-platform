@@ -22,6 +22,27 @@ export const useUserStore = defineStore('user', () => {
     userInfo.value = null
   }
 
+  /** 从 localStorage 同步真实登录态。
+   * 登录卡片（LoginCard→SideBar）走的是“直接写 localStorage + login-success 事件”的路径，
+   * 不会更新本 store 的 token/userInfo；若不同步，store.isLoggedIn 永远为 false，
+   * 手机端（顶部登录按钮/底部导航/路由守卫都读 store）登录成功后仍会反复弹出登录框。 */
+  const syncFromStorage = () => {
+    token.value = localStorage.getItem(TOKEN_KEY) || ''
+    try {
+      userInfo.value = JSON.parse(localStorage.getItem(USER_KEY) || 'null')
+    } catch {
+      userInfo.value = null
+    }
+  }
+
+  // 登录成功 / 资料更新 / 退出后，把 localStorage 里的真实登录态同步进 store
+  // （store 为单例，随页面一起销毁，无需手动移除监听）
+  if (typeof window !== 'undefined') {
+    window.addEventListener('loginSuccess', syncFromStorage)
+    window.addEventListener('userInfoUpdated', syncFromStorage)
+    window.addEventListener('logoutSuccess', syncFromStorage)
+  }
+
   const isLoggedIn = computed(() => Boolean(token.value && userInfo.value))
 
   /** 登录/自动注册 */

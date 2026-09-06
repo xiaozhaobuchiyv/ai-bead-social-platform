@@ -188,6 +188,8 @@ const handleLogout = () => {
   userInfo.value = null
   unreadNoticeCount.value = 0
   unreadMessageCount.value = 0
+  // 通知 store 同步登录态（否则 store.isLoggedIn 仍为 true，手机端会误判为已登录）
+  window.dispatchEvent(new Event('logoutSuccess'))
   router.push('/')
 }
 
