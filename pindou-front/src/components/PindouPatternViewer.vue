@@ -157,14 +157,20 @@ const updateThumbnail = () => {
   })
 }
 
-// 绘制图纸（跟随当前样式：格子纸 / 纯像素），并默认缩放到容器内 100% 可见
+// 绘制图纸（跟随当前样式：格子纸 / 纯像素），并让图纸完整可见
 const drawGrid = () => {
   if (!gridCanvas.value || !props.result) return
-  drawPatternToCanvas(gridCanvas.value, props.result, { style: styleMode.value })
+  const wrapper = gridWrapper.value
+  const gw = Math.max(1, Number(props.result.gridWidth) || 1)
+  const maxW = wrapper ? wrapper.clientWidth - 8 : 360
+  // 自适应格子宽：尽量让图纸宽度放得下容器（兼顾文字可读）
+  const rawCell = Math.floor((maxW - 28) / gw) // 28 = labelSize
+  const cell = Math.max(8, Math.min(18, rawCell))
+  drawPatternToCanvas(gridCanvas.value, props.result, { pixelSize: cell, style: styleMode.value })
   fitToContainer()
 }
 
-// 将图纸适配到容器：初始 100% 完整显示，可再缩放/平移
+// 把图纸适配到容器：初始 100% 完整显示并居中，可再缩放/平移
 const fitToContainer = () => {
   const c = gridCanvas.value
   const w = gridWrapper.value
@@ -173,10 +179,10 @@ const fitToContainer = () => {
   const ch = c.height || 1
   const rw = w.clientWidth || 1
   const rh = w.clientHeight || 1
-  const scale = Math.min(rw / cw, rh / ch, 1.6)
+  const scale = Math.min(rw / cw, rh / ch, 1)
   zoomLevel.value = Math.max(0.05, Number(scale.toFixed(2)))
-  panX.value = 0
-  panY.value = 0
+  panX.value = Math.max(0, (rw - cw * zoomLevel.value) / 2)
+  panY.value = Math.max(0, (rh - ch * zoomLevel.value) / 2)
 }
 
 watch(
