@@ -968,4 +968,35 @@ const dataUrlToBlob = (dataUrl) => {
     transform: rotate(360deg);
   }
 }
+
+/* ===== 发布页手机端：上下堆叠，不再拥挤 ===== */
+@media (max-width: 768px) {
+  .publish-layout {
+    flex-direction: column;
+    padding: 0 12px 20px;
+    gap: 16px;
+  }
+
+  .publish-sidebar {
+    width: 100%;
+    padding: 0 12px;
+  }
+
+  .publish-form {
+    padding: 16px;
+  }
+
+  .form-item {
+    margin-bottom: 14px;
+  }
+
+  .upload-area-wrap {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .btn-publish,
+  .btn-draft {
+    width: 100%;
+  }
+}
 </style>

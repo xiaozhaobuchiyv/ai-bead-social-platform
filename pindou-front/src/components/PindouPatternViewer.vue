@@ -157,10 +157,26 @@ const updateThumbnail = () => {
   })
 }
 
-// 绘制图纸（跟随当前样式：格子纸 / 纯像素）
+// 绘制图纸（跟随当前样式：格子纸 / 纯像素），并默认缩放到容器内 100% 可见
 const drawGrid = () => {
   if (!gridCanvas.value || !props.result) return
   drawPatternToCanvas(gridCanvas.value, props.result, { style: styleMode.value })
+  fitToContainer()
+}
+
+// 将图纸适配到容器：初始 100% 完整显示，可再缩放/平移
+const fitToContainer = () => {
+  const c = gridCanvas.value
+  const w = gridWrapper.value
+  if (!c || !w) return
+  const cw = c.width || 1
+  const ch = c.height || 1
+  const rw = w.clientWidth || 1
+  const rh = w.clientHeight || 1
+  const scale = Math.min(rw / cw, rh / ch, 1.6)
+  zoomLevel.value = Math.max(0.05, Number(scale.toFixed(2)))
+  panX.value = 0
+  panY.value = 0
 }
 
 watch(
@@ -193,9 +209,9 @@ const zoomIn = () => {
 }
 
 const zoomOut = () => {
-  if (zoomLevel.value <= 0.3) return
+  if (zoomLevel.value <= 0.05) return
   const oldZoom = zoomLevel.value
-  const newZoom = Math.max(zoomLevel.value - 0.25, 0.3)
+  const newZoom = Math.max(zoomLevel.value - 0.25, 0.05)
   zoomLevel.value = newZoom
   if (gridWrapper.value) {
     const rect = gridWrapper.value.getBoundingClientRect()
@@ -208,14 +224,12 @@ const zoomOut = () => {
 }
 
 const resetZoom = () => {
-  zoomLevel.value = 1
-  panX.value = 0
-  panY.value = 0
+  fitToContainer()
 }
 
 const handleWheel = (event) => {
   const delta = event.deltaY > 0 ? -0.1 : 0.1
-  const newZoom = Math.min(3, Math.max(0.3, zoomLevel.value + delta))
+  const newZoom = Math.min(3, Math.max(0.05, zoomLevel.value + delta))
   if (newZoom !== zoomLevel.value) {
     const rect = gridWrapper.value.getBoundingClientRect()
     const mouseX = event.clientX - rect.left
