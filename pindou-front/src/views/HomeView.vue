@@ -535,6 +535,27 @@ const handleLoginSuccess = async () => {
         </div>
         <div class="item-content">
           <p v-if="item.title" class="item-title">{{ item.title }}</p>
+          <p class="item-desc" v-html="highlightText(item.description)"></p>
+          <div class="item-footer">
+            <div class="author-row" @click.stop="goToAuthor(item.userId)">
+              <SkeletonAvatar :src="item.authorAvatarRaw ? resolveMediaUrl(item.authorAvatarRaw) : ''" :name="item.authorName" :size="32" @click.stop="goToAuthor(item.userId)" />
+              <div class="author-meta">
+                <span class="author-name">{{ item.authorName }}</span>
+                <span v-if="item.followed" class="follow-badge">已关注</span>
+              </div>
+            </div>
+            <div class="action-row">
+              <span class="footer-like" :class="{ liked: item.liked, animating: item.animatingLike }" @click.stop="toggleLike(item)">
+                <XhsIcon name="like" :filled="item.liked" :class="{ liked: item.liked }" /> {{ formatNumber(item.likes) }}
+              </span>
+              <span class="footer-comment" @click.stop="openDetailModal(item.id)">
+                <XhsIcon name="comment" /> {{ formatNumber(item.commentCount) }}
+              </span>
+              <span class="footer-collect" :class="{ collected: item.collected, animating: item.animatingCollect }" @click.stop="toggleCollect(item)">
+                <XhsIcon name="collect" :filled="item.collected" :class="{ collected: item.collected }" /> {{ formatNumber(item.collects) }}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
