@@ -87,6 +87,36 @@ const avatarUrl = (filename) => `/uploads/avatars/${filename}`
 const patternUrl = (filename) => `/uploads/patterns/${filename}`
 const videoUrl = (filename) => `/uploads/videos/${filename}`
 
+const DATA_URL_EXT = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+}
+
+/**
+ * 把内嵌的 base64 图片（data:image/png;base64,...）落盘到指定目录，返回对应的相对 URL。
+ * 用于「图纸保存/发布预览」把大段 base64 转成真实文件，页面不再内嵌 base64。
+ * 非 base64 图片地址原样返回（已是 URL / 路径时无需处理）。
+ * @param {string} dataUrl  base64 data URL 或普通 URL
+ * @param {string} dir      目标目录（IMAGES_DIR / PATTERNS_DIR 等）
+ * @param {(filename:string)=>string} toUrl 相对 URL 生成函数（imgUrl / patternUrl 等）
+ * @returns {string|null} 落盘后的相对 URL；不是 base64 图片时返回 null
+ */
+function saveDataUrlToUploads(dataUrl, dir, toUrl) {
+  if (typeof dataUrl !== 'string') return null
+  const match = dataUrl.match(/^data:(image\/[a-z0-9+.-]+);base64,([A-Za-z0-9+/=]+)$/i)
+  if (!match) return null
+  const mime = match[1].toLowerCase()
+  const ext = DATA_URL_EXT[mime] || '.png'
+  const buffer = Buffer.from(match[2], 'base64')
+  if (!buffer.length) return null
+  const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+  ensureDir(dir)
+  fs.writeFileSync(path.join(dir, filename), buffer)
+  return toUrl(filename)
+}
+
 module.exports = {
   UPLOAD_ROOT,
   AVATAR_DIR,
@@ -101,4 +131,5 @@ module.exports = {
   avatarUrl,
   patternUrl,
   videoUrl,
+  saveDataUrlToUploads,
 }

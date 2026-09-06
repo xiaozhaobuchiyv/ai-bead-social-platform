@@ -30,7 +30,12 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
         // 简化配置，去掉有问题的 configure
-      }
+      },
+      // 上传图片走真实文件地址（/uploads/...），开发环境也要代理到后端
+      '/uploads': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     }
   },
   build: {

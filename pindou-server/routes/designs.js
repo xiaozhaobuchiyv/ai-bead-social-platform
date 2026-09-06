@@ -6,6 +6,7 @@ const express = require('express')
 const jwt = require('jsonwebtoken')
 const pool = require('../config/db')
 const { JWT_SECRET } = require('../config/jwt')
+const { saveDataUrlToUploads, IMAGES_DIR, PATTERNS_DIR, imgUrl, patternUrl } = require('../utils/upload')
 
 const router = express.Router()
 
@@ -65,15 +66,21 @@ router.post('/save', async (req, res) => {
       return res.json({ code: 400, msg: '图纸数据过大' })
     }
 
+    // 把内嵌的 base64（data:image/png;base64,...）落盘为真实文件，
+    // 这样「我的图纸」/ 详情页展示的是 /uploads/... 真实地址，页面不再内嵌大段 base64。
+    // 已是 URL / 路径的地址原样保留。
+    const storedPreview = saveDataUrlToUploads(previewImage, PATTERNS_DIR, patternUrl) || previewImage
+    const storedSource = saveDataUrlToUploads(sourceImage, IMAGES_DIR, imgUrl) || sourceImage
+
     const [result] = await pool.query(
       `INSERT INTO pindou_designs
         (user_id, source_image, grid_width, grid_height, grid_size, max_colors, pixels, palette,
          total_pixels, color_count, similarity, estimated_time, preview_image)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        userId, sourceImage, gridWidth, gridHeight, gridSize, maxColors, pixels,
+        userId, storedSource, gridWidth, gridHeight, gridSize, maxColors, pixels,
         JSON.stringify(Array.isArray(palette) ? palette : []),
-        totalPixels, colorCount, similarity, estimatedTime, previewImage,
+        totalPixels, colorCount, similarity, estimatedTime, storedPreview,
       ]
     )
 

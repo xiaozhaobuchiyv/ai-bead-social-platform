@@ -260,28 +260,12 @@ const handleImageUpload = async (e) => {
         const processedBlob = await drawGridOverlay(compressedFile)
         const processedFile = new File([processedBlob], `${Date.now()}-${file.name.replace(/\.[^.]+$/, '')}.jpg`, { type: 'image/jpeg' })
         fileList.value.push(processedFile)
-
-        const reader = new FileReader()
-        await new Promise((resolve, reject) => {
-          reader.onload = (ev) => {
-            images.value.push(ev.target.result)
-            resolve()
-          }
-          reader.onerror = reject
-          reader.readAsDataURL(processedFile)
-        })
+        // 用 object URL 做本地预览，避免在页面里内嵌大段 base64
+        images.value.push(URL.createObjectURL(processedFile))
       } catch (error) {
         console.error(`处理失败:`, error)
         fileList.value.push(file)
-        const reader = new FileReader()
-        await new Promise((resolve, reject) => {
-          reader.onload = (ev) => {
-            images.value.push(ev.target.result)
-            resolve()
-          }
-          reader.onerror = reject
-          reader.readAsDataURL(file)
-        })
+        images.value.push(URL.createObjectURL(file))
       }
     }
   } finally {
@@ -449,23 +433,31 @@ onMounted(() => {
     }
   }
 
-  // 从拼豆图纸 / 拼小豆一键发布的图纸图片（dataURL）
+  // 从拼豆图纸 / 拼小豆一键发布的图纸图片：
+  // 现在存的是真实文件地址（/uploads/xxx.png，发布前已上传），直接作为已有图片路径展示/提交；
+  // 兼容旧版本仍旧存 base64 dataURL 的情况。
   const publishImage = localStorage.getItem('pindouPublishImage')
   if (publishImage) {
     localStorage.removeItem('pindouPublishImage')
-    try {
-      const blob = dataUrlToBlob(publishImage)
-      const file = new File([blob], `pindou-design-${Date.now()}.png`, { type: 'image/png' })
-      fileList.value.push(file)
-      images.value.push(publishImage)
-      if (!form.value.title.trim()) {
-        form.value.title = '我的拼豆图纸分享'
+    const isUrl = /^(https?:)?\/\//.test(publishImage) || publishImage.startsWith('/uploads/')
+    if (isUrl) {
+      existingImagePaths.value.push(publishImage)
+      images.value.push(publishImage.startsWith('/') ? resolveMediaUrl(publishImage) : publishImage)
+    } else {
+      try {
+        const blob = dataUrlToBlob(publishImage)
+        const file = new File([blob], `pindou-design-${Date.now()}.png`, { type: 'image/png' })
+        fileList.value.push(file)
+        images.value.push(publishImage)
+      } catch (e) {
+        console.error('解析拼豆图纸图片失败:', e)
       }
-      if (!form.value.content.trim()) {
-        form.value.content = '用拼小豆 + 图纸转换生成的拼豆图纸，分享给大家~'
-      }
-    } catch (e) {
-      console.error('解析拼豆图纸图片失败:', e)
+    }
+    if (!form.value.title.trim()) {
+      form.value.title = '我的拼豆图纸分享'
+    }
+    if (!form.value.content.trim()) {
+      form.value.content = '用拼小豆 + 图纸转换生成的拼豆图纸，分享给大家~'
     }
   }
 })

@@ -88,6 +88,7 @@ import { useRouter } from 'vue-router'
 import { PictureFilled, Brush, Camera, Close, Loading, MagicStick, Grid } from '@element-plus/icons-vue'
 import PindouPatternViewer from '@/components/PindouPatternViewer.vue'
 import { convertImageToPindou, drawPatternToCanvas, serializePixels } from '@/utils/pindou'
+import { uploadImageFile, canvasToBlob, makeImageFilename } from '@/utils/upload'
 import { designApi } from '@/api'
 
 const router = useRouter()
@@ -120,22 +121,31 @@ const saving = ref(false)
 // 上传相关
 const triggerUpload = () => fileInput.value?.click()
 
-const handleFileSelect = (event) => {
-  const file = event.target.files?.[0]
-  if (file) {
-    const reader = new FileReader()
-    reader.onload = (e) => (uploadedImage.value = e.target.result)
-    reader.readAsDataURL(file)
+// 上传本地图片到后端，拿到真实地址 /uploads/images/xxx.png 再展示与转换，
+// 页面不再内嵌 base64（避免“loaded over an insecure connection”警告）。
+const uploadLocalImage = async (file) => {
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('只支持图片文件')
+    return
+  }
+  try {
+    const url = await uploadImageFile(file, { filename: file.name })
+    uploadedImage.value = url
+  } catch (error) {
+    ElMessage.error(error?.message || '图片上传失败')
   }
 }
 
-const handleDrop = (event) => {
+const handleFileSelect = async (event) => {
+  const file = event.target.files?.[0]
+  if (file) await uploadLocalImage(file)
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+const handleDrop = async (event) => {
   const file = event.dataTransfer?.files?.[0]
-  if (file && file.type.startsWith('image/')) {
-    const reader = new FileReader()
-    reader.onload = (e) => (uploadedImage.value = e.target.result)
-    reader.readAsDataURL(file)
-  }
+  if (file && file.type.startsWith('image/')) await uploadLocalImage(file)
 }
 
 const removeImage = () => {
@@ -205,12 +215,20 @@ const saveDesign = async (result, style = 'blueprint') => {
   }
 }
 
-// 发布为笔记
-const publishDesign = (result, style = 'blueprint') => {
+// 发布为笔记：把图纸先上传成真实文件地址，发布页用它显示/提交，不再内嵌 base64
+const publishDesign = async (result, style = 'blueprint') => {
   if (!result) return
-  const dataUrl = renderPatternImage(result, style)
-  localStorage.setItem('pindouPublishImage', dataUrl)
-  router.push('/publish')
+  try {
+    const canvas = document.createElement('canvas')
+    drawPatternToCanvas(canvas, result, { pixelSize: 18, labelSize: 28, style })
+    const blob = await canvasToBlob(canvas, 'image/png')
+    if (!blob) throw new Error('图纸渲染失败')
+    const url = await uploadImageFile(blob, { filename: makeImageFilename('pindou', 'image/png') })
+    localStorage.setItem('pindouPublishImage', url)
+    router.push('/publish')
+  } catch (error) {
+    ElMessage.error(error?.message || '图纸上传失败，无法发布')
+  }
 }
 </script>
 

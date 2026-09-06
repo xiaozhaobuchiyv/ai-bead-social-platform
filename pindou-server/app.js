@@ -75,6 +75,7 @@ app.use("/api/notice", require("./routes/notices"));
 app.use("/api/messages", require("./routes/messages"));
 app.use("/api/ai", require("./routes/ai"));
 app.use("/api/designs", require("./routes/designs"));
+app.use("/api/common", require("./routes/common"));
 
 app.get("/", (req, res) => {
   res.send("拼豆分享平台后端运行正常！接口前缀为 /api/，文档见 /api/docs");

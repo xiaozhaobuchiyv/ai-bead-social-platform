@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import PindouPatternViewer from '@/components/PindouPatternViewer.vue'
 import { convertImageToPindou, drawPatternToCanvas, serializePixels } from '@/utils/pindou'
+import { uploadImageFile, canvasToBlob, makeImageFilename } from '@/utils/upload'
 import { designApi } from '@/api'
 
 const router = useRouter()
@@ -761,13 +762,20 @@ const savePatternDesign = async (result, style = 'blueprint') => {
   }
 }
 
-/** 一键发布为笔记 */
-const publishPatternDesign = (result, style = 'blueprint') => {
+/** 一键发布为笔记：图纸先上传成真实文件地址，发布页用它显示/提交，不再内嵌 base64 */
+const publishPatternDesign = async (result, style = 'blueprint') => {
   if (!result) return
-  const canvas = document.createElement('canvas')
-  drawPatternToCanvas(canvas, result, { style })
-  localStorage.setItem('pindouPublishImage', canvas.toDataURL('image/png'))
-  router.push('/publish')
+  try {
+    const canvas = document.createElement('canvas')
+    drawPatternToCanvas(canvas, result, { style })
+    const blob = await canvasToBlob(canvas, 'image/png')
+    if (!blob) throw new Error('图纸渲染失败')
+    const url = await uploadImageFile(blob, { filename: makeImageFilename('pindou', 'image/png') })
+    localStorage.setItem('pindouPublishImage', url)
+    router.push('/publish')
+  } catch (error) {
+    ElMessage.error(error?.message || '图纸上传失败，无法发布')
+  }
 }
 </script>
 

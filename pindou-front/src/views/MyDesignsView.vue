@@ -78,6 +78,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { designApi } from '@/api'
 import { deserializePixels, drawPatternToCanvas } from '@/utils/pindou'
+import { uploadImageFile, canvasToBlob, makeImageFilename } from '@/utils/upload'
 import PindouPatternViewer from '@/components/PindouPatternViewer.vue'
 
 const router = useRouter()
@@ -150,20 +151,27 @@ const openDetail = (design) => {
   detailVisible.value = true
 }
 
-/** 一键发布为笔记（style: 'blueprint' 图纸 / 'pixel' 纯像素图） */
-const publishDesign = (design, style = 'blueprint') => {
+/** 一键发布为笔记（style: 'blueprint' 图纸 / 'pixel' 纯像素图）：先上传成真实文件地址 */
+const publishDesign = async (design, style = 'blueprint') => {
   const target = design?.id ? design : currentDesign.value
   if (!target) return
-  const canvas = document.createElement('canvas')
-  drawPatternToCanvas(canvas, detailResult.value || {
-    pixels: deserializePixels(target.pixels, target.palette || []),
-    gridWidth: target.gridWidth,
-    gridHeight: target.gridHeight,
-  }, { style })
-  localStorage.setItem('pindouPublishImage', canvas.toDataURL('image/png'))
-  detailVisible.value = false
-  ElMessage.success('已带图跳转发布页~')
-  router.push('/publish')
+  try {
+    const canvas = document.createElement('canvas')
+    drawPatternToCanvas(canvas, detailResult.value || {
+      pixels: deserializePixels(target.pixels, target.palette || []),
+      gridWidth: target.gridWidth,
+      gridHeight: target.gridHeight,
+    }, { style })
+    const blob = await canvasToBlob(canvas, 'image/png')
+    if (!blob) throw new Error('图纸渲染失败')
+    const url = await uploadImageFile(blob, { filename: makeImageFilename('pindou', 'image/png') })
+    localStorage.setItem('pindouPublishImage', url)
+    detailVisible.value = false
+    ElMessage.success('已带图跳转发布页~')
+    router.push('/publish')
+  } catch (error) {
+    ElMessage.error(error?.message || '图纸上传失败，无法发布')
+  }
 }
 
 const deleteDesign = async (design) => {
