@@ -710,8 +710,17 @@ const handleLoginSuccess = async () => {
   .waterfall { columns: 3; }
 }
 
+@media (max-width: 768px) {
+  .waterfall { columns: 2; column-gap: 6px; }
+  .home-container { padding: 8px; }
+  .waterfall-item { margin-bottom: 8px; border-radius: 8px; }
+  .item-content { padding: 8px; }
+  .item-title { font-size: 14px; }
+  .item-desc { font-size: 13px; margin-bottom: 8px; }
+}
+
 @media (max-width: 600px) {
-  .waterfall { columns: 2; column-gap: 8px; }
+  .waterfall { columns: 2; column-gap: 6px; }
 }
 
 .waterfall-item {
